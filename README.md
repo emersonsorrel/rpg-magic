@@ -4,15 +4,45 @@ A procedurally generated, LLM-authored JRPG. The engine owns structure and truth
 the model authors content inside a schema the engine validates. See
 `docs/design.md` for the full design.
 
-**Status: M0 (Contracts) complete.** No Phaser yet, by design.
+**Status: M1 (Runtime on canned data) complete.** No backend, no LLM yet, by design.
 
 ## Quick start
+
+Backend contracts and validator:
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m backend.validation.cli --broken
 .venv/bin/python -m pytest -q
 ```
+
+Client:
+
+```bash
+cd client && npm install --ignore-scripts && npm test
+```
+
+Play it — serve the repo root, then open `/client/index.html`:
+
+```bash
+python3 -m http.server 5173 --directory "$(git rev-parse --show-toplevel)"
+```
+
+Arrows or WASD to walk, Space/Enter to talk and advance text, Up/Down to pick an
+option. Walk up to Mayor Helle, Dorn, or the chest by the south fence.
+
+### Why there is no bundler
+
+The client is plain ES modules with an import map and **no build step**: Phaser's
+prebuilt ESM dist is imported directly and any static file server will do. Vite
+was the original plan (design doc 6), but the sandbox this repo is developed in
+kills freshly-downloaded native binaries, so esbuild and rolldown cannot run.
+Rather than half-verify the client, it was built to run without them.
+
+The one thing this costs is JSX, so the M1 shell is plain DOM instead of React.
+The React/Phaser boundary the design calls for is still there —
+`src/game/GameBus.js` — and the shell talks to the game only across it, so
+swapping in React later touches the shell and nothing else.
 
 ## What exists
 
@@ -31,6 +61,28 @@ backend/
   registries/                  items, encounters, tilesets, tag vocabulary
   validation/                  schema pass + semantic/referential pass + CLI
 tests/                         33 tests; the M0 acceptance gate
+client/
+  index.html                   import map + shell layout; no bundler
+  src/game/
+    EventRunner.js             framework-free interpreter -- no Phaser, no DOM
+    WorldState.js              client-side ledger; owns facts, not presentation
+    assetPack.js               tag-based sprite resolution (design doc 3.4)
+    textures.js                placeholder art, drawn at boot
+    zoneLoader.js              fetch + schema gate before anything renders
+    GameBus.js                 the shell <-> Phaser seam
+    scenes/                    Boot, Overworld, UI
+    generated/validators.js    COMMITTED build output -- see below
+  src/shell/DebugPanel.js      flags, inventory and a live event log
+  tools/build-validator.js     /schemas -> standalone JS validator
+  test/                        38 tests, run by node --test
+```
+
+`client/src/game/generated/validators.js` is generated from `/schemas` and
+**committed on purpose** — there is no build step in the serve path, so the
+browser fetches it directly. Regenerate it whenever a schema changes:
+
+```bash
+cd client && npm run build:validator
 ```
 
 Edit `fixtures/zone_town_01.map.txt` or the entity scripts, then re-run
@@ -78,9 +130,29 @@ Choices the design doc left open or did not cover, resolved here:
 - **Doors are collision tiles at M0.** Interiors as separate small packages
   (open question 1) lands in M2.
 
-## Next: M1
+## Decisions taken during M1
 
-Phaser client loads `fixtures/zone_town_01.json`, renders the three layers, walks
-a sprite, collides, and runs `npc_mayor_helle`'s script through the Event Runner.
-No backend, no LLM. Generate the JS validator from the same `schemas/` directory --
-the contract lives in exactly one place.
+- **No bundler** (see above). The knock-on effect is that Ajv's standalone output
+  needs two runtime helpers it normally `require()`s; `tools/build-validator.js`
+  inlines them and fails loudly if Ajv ever asks for a third.
+- **The client validates shape, the backend validates meaning.** The generated
+  validator rejects structurally wrong packages. Referential integrity,
+  reachability and obligations stay in `backend/validation/` where they gate the
+  commit — a client-side check of those would be theatre.
+- **`once` entity state lives outside the ledger** for now (`WorldState.spent`).
+  It needs a home in the ledger schema when save/load lands in M5.
+- **Movement is buffered, not polled only.** A tap shorter than one frame used to
+  be dropped; keydown now queues one step, and a press mid-step is held until the
+  step lands. Direction keys match on both `KeyboardEvent.code` and `.key`,
+  because `code` is absent on some synthetic and IME-generated events.
+- **Unimplemented ops degrade to a labelled text box** rather than a crash:
+  `START_BATTLE` says battles arrive in M4, `WARP` says the target zone is not
+  authored yet. Both are clearly marked as placeholders on screen.
+
+## Next: M2
+
+Backend generates a town and a dungeon floor deterministically from a seed and
+emits valid Zone Packages with placeholder-filled slots. The client swaps
+`zoneLoader.js`'s two fixture URLs for `api.js` calls; nothing downstream of the
+Zone Package needs to change. *Done when: two generated zones connect and are
+walkable.*
