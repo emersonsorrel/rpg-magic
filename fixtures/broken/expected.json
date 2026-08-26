@@ -1,0 +1,71 @@
+{
+  "01_unknown_op.json": {
+    "expect_error_codes": [
+      "unknown_op"
+    ],
+    "note": "Model invents a command outside the closed vocabulary."
+  },
+  "02_dangling_item.json": {
+    "expect_error_codes": [
+      "unknown_item",
+      "obligation_unfulfilled"
+    ],
+    "note": "Item id typo. Also breaks the obligation that depends on it."
+  },
+  "03_undeclared_flag.json": {
+    "expect_error_codes": [
+      "unknown_flag"
+    ],
+    "note": "SET_FLAG on a flag that is neither in the ledger nor declared by the zone."
+  },
+  "04_nesting_too_deep.json": {
+    "expect_error_codes": [
+      "nesting_too_deep"
+    ],
+    "note": "Fourth level of script nesting; the cap is 3."
+  },
+  "05_warp_undeclared_exit.json": {
+    "expect_error_codes": [
+      "warp_target_undeclared",
+      "unknown_zone"
+    ],
+    "note": "Warp to a zone the ledger never connected to this one."
+  },
+  "06_obligation_unfulfilled.json": {
+    "expect_error_codes": [
+      "obligation_unfulfilled"
+    ],
+    "note": "The Fire Key problem. Zone is pinned to place the Ember Sigil and does not."
+  },
+  "07_layer_size_mismatch.json": {
+    "expect_error_codes": [
+      "layer_size_mismatch"
+    ],
+    "note": "Collision layer one tile short of width*height."
+  },
+  "08_entity_in_wall.json": {
+    "expect_error_codes": [
+      "entity_on_blocked_tile"
+    ],
+    "note": "NPC placed on a collision tile; unreachable forever."
+  },
+  "09_text_too_long.json": {
+    "expect_error_codes": [
+      "text_too_long",
+      "schema"
+    ],
+    "note": "Dialogue past the 180-char box cap."
+  },
+  "10_entity_unreachable.json": {
+    "expect_error_codes": [
+      "entity_unreachable"
+    ],
+    "note": "Chest walled in. Schema-clean, id-clean, and still a softlock."
+  },
+  "11_tile_out_of_range.json": {
+    "expect_error_codes": [
+      "tile_out_of_range"
+    ],
+    "note": "Decor index past the end of the tileset."
+  }
+}

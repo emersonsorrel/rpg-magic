@@ -1,0 +1,35 @@
+# zone_town_01 -- Callow Ford. Hand-drawn source for fixtures/zone_town_01.json.
+# 20 wide x 15 tall. Expanded to layer arrays by fixtures/build_zone_town_01.py.
+#
+# LEGEND            ground        decor          collision
+#   .  grass        grass(1)      -              walkable
+#   ,  dirt road    dirt_road(2)  -              walkable
+#   *  flowers      grass(1)      flowers(22)    walkable
+#   =  dock planks  planks(4)     -              walkable
+#   ~  river        water(3)      -              BLOCKED
+#   T  tree         grass(1)      tree(16)       BLOCKED
+#   #  wall         grass(1)      wall_stone(17) BLOCKED
+#   +  door         grass(1)      door_wood(18)  BLOCKED  (interiors are M2+)
+#   o  well         grass(1)      well(19)       BLOCKED
+#   f  fence        grass(1)      fence(20)      BLOCKED
+#
+# The one gap in the treeline, (10,0), is the warp north to zone_mine_b1.
+# The river seals the south edge, so the mine road is the only way out.
+#
+#        1111111111
+#        0123456789
+TTTTTTTTTT,TTTTTTTTT
+T..*.....,,.....*..T
+T.####...,,...####.T
+T.#++#...,,...#++#.T
+T........,,........T
+T..,,,,,,,,,,,,,,..T
+T........,,.o......T
+T........,,........T
+T.####...,,...####.T
+T.#++#...,,...#++#.T
+T........,,........T
+T..fff...,,...fff..T
+T........,,........T
+~~~~~~~~~==~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~

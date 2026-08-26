@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "_note": "Fixed core item list (open question 5). The outline call may add a small number of key items via ledger.defined_items; it may not add anything with new mechanics.",
+  "items": [
+    { "id": "potion",       "name": "Potion",       "kind": "consumable", "effect": "heal_hp",  "power": 40 },
+    { "id": "hi_potion",    "name": "Hi-Potion",    "kind": "consumable", "effect": "heal_hp",  "power": 120 },
+    { "id": "ether",        "name": "Ether",        "kind": "consumable", "effect": "heal_mp",  "power": 20 },
+    { "id": "antidote",     "name": "Antidote",     "kind": "consumable", "effect": "cure",     "status": "poison" },
+    { "id": "revive_herb",  "name": "Revive Herb",  "kind": "consumable", "effect": "revive",   "power": 25 },
+
+    { "id": "bronze_sword", "name": "Bronze Sword", "kind": "weapon", "atk": 6 },
+    { "id": "iron_sword",   "name": "Iron Sword",   "kind": "weapon", "atk": 12 },
+    { "id": "oak_staff",    "name": "Oak Staff",    "kind": "weapon", "atk": 3, "mag": 8 },
+
+    { "id": "leather_vest", "name": "Leather Vest", "kind": "armor", "def": 5 },
+    { "id": "chain_vest",   "name": "Chain Vest",   "kind": "armor", "def": 11 },
+
+    { "id": "rope",         "name": "Rope",         "kind": "tool" },
+    { "id": "lantern",      "name": "Lantern",      "kind": "tool" }
+  ]
+}

@@ -1,0 +1,10 @@
+[project]
+name = "jrpg-forge"
+version = "0.0.1"
+description = "Procedurally generated, LLM-authored JRPG engine"
+requires-python = ">=3.11"
+dependencies = ["jsonschema>=4.20"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

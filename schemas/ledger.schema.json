@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://jrpg-forge.dev/schemas/ledger.schema.json",
+  "title": "World Ledger",
+  "description": "Engine-owned source of truth (design doc 3.1). Every fact that must survive across zones lives here, never in the model's context. The ledger doubles as the save file.",
+
+  "type": "object",
+  "required": [
+    "schema_version", "seed", "premise", "outline", "obligations",
+    "zones", "flags", "party", "inventory", "player_position"
+  ],
+  "additionalProperties": false,
+
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "seed": {
+      "description": "Drives every proc-gen decision and every asset tie-break. Same seed, same world.",
+      "type": "integer", "minimum": 0, "maximum": 4294967295
+    },
+    "premise": { "type": "string", "minLength": 1, "maxLength": 500 },
+
+    "outline": {
+      "description": "Written once by the outline call. Nothing downstream may contradict it.",
+      "type": "object",
+      "required": ["tone", "beats", "antagonist"],
+      "additionalProperties": false,
+      "properties": {
+        "tone": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "antagonist": {
+          "type": "object",
+          "required": ["name", "motive"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "motive": { "type": "string", "minLength": 1, "maxLength": 400 }
+          }
+        },
+        "beats": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 24,
+          "items": {
+            "type": "object",
+            "required": ["id", "summary", "status"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/identifier" },
+              "summary": { "type": "string", "minLength": 1, "maxLength": 400 },
+              "zone_hint": { "type": "string", "maxLength": 120 },
+              "status": { "enum": ["pending", "active", "done"] }
+            }
+          }
+        }
+      }
+    },
+
+    "obligations": {
+      "description": "The mechanism that solves the Fire Key problem. The outline writes these; the zone generator consults them; the validator refuses to commit a zone that violates them.",
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "name", "required_by", "must_place_before", "placed_in", "status"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "kind": { "enum": ["key_item", "flag", "party_member"] },
+          "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "item_id": {
+            "description": "Required when kind is key_item. The thing that must physically exist somewhere reachable.",
+            "$ref": "#/$defs/identifier"
+          },
+          "flag": { "$ref": "#/$defs/identifier" },
+          "gates_beat": { "$ref": "#/$defs/identifier" },
+          "required_by": {
+            "description": "Zone that consumes it -- where the locked door stands.",
+            "$ref": "#/$defs/identifier"
+          },
+          "must_place_before": {
+            "description": "Zone the player must not reach until this obligation is placed.",
+            "$ref": "#/$defs/identifier"
+          },
+          "placed_in": {
+            "description": "Engine fills this on commit. Null while open.",
+            "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/identifier" }]
+          },
+          "status": { "enum": ["open", "placed", "consumed"] }
+        }
+      }
+    },
+
+    "defined_items": {
+      "description": "Open question 5, resolved: a fixed core item registry plus a small number of outline-defined key items with mechanically generic behaviour. These are the outline-defined ones.",
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "kind"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 48 },
+          "kind": { "enum": ["key_item"] },
+          "description": { "type": "string", "maxLength": 200 }
+        }
+      }
+    },
+
+    "zones": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/identifier" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["id", "kind", "committed"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "kind": { "enum": ["town", "dungeon", "wilderness", "interior"] },
+          "committed": {
+            "description": "Committed is permanent (open question 2). A committed zone is never re-authored.",
+            "type": "boolean"
+          },
+          "summary": { "type": "string", "maxLength": 400 },
+          "exits": {
+            "description": "Direction -> zone id. A zone package may only warp to a zone declared here.",
+            "type": "object",
+            "propertyNames": { "enum": ["north", "south", "east", "west", "up", "down", "in", "out"] },
+            "additionalProperties": { "$ref": "#/$defs/identifier" }
+          },
+          "notable_entities": {
+            "type": "array",
+            "maxItems": 32,
+            "items": { "$ref": "#/$defs/identifier" }
+          }
+        }
+      }
+    },
+
+    "flags": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/identifier" },
+      "additionalProperties": { "type": "boolean" }
+    },
+
+    "party": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "level", "hp", "max_hp", "stats"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 24 },
+          "level": { "type": "integer", "minimum": 1, "maximum": 99 },
+          "hp": { "type": "integer", "minimum": 0 },
+          "max_hp": { "type": "integer", "minimum": 1 },
+          "mp": { "type": "integer", "minimum": 0 },
+          "max_mp": { "type": "integer", "minimum": 0 },
+          "xp": { "type": "integer", "minimum": 0 },
+          "stats": {
+            "type": "object",
+            "required": ["atk", "def", "agi", "mag"],
+            "additionalProperties": false,
+            "properties": {
+              "atk": { "type": "integer", "minimum": 1 },
+              "def": { "type": "integer", "minimum": 1 },
+              "agi": { "type": "integer", "minimum": 1 },
+              "mag": { "type": "integer", "minimum": 1 }
+            }
+          },
+          "skills": { "type": "array", "maxItems": 16, "items": { "$ref": "#/$defs/identifier" } }
+        }
+      }
+    },
+
+    "inventory": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": ["item_id", "qty"],
+        "additionalProperties": false,
+        "properties": {
+          "item_id": { "$ref": "#/$defs/identifier" },
+          "qty": { "type": "integer", "minimum": 1, "maximum": 99 }
+        }
+      }
+    },
+
+    "player_position": {
+      "type": "object",
+      "required": ["zone", "x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "zone": { "$ref": "#/$defs/identifier" },
+        "x": { "type": "integer", "minimum": 0, "maximum": 127 },
+        "y": { "type": "integer", "minimum": 0, "maximum": 127 }
+      }
+    }
+  },
+
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" }
+  }
+}

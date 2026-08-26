@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "_note": "Logical tilesets. `names` exists so hand-authored fixtures and proc-gen output stay readable; the runtime only needs tile_count and file.",
+  "tilesets": {
+    "overworld_temperate": {
+      "file": "overworld_temperate.png",
+      "tags": ["biome:temperate"],
+      "tile_count": 32,
+      "names": {
+        "0": "empty",
+        "1": "grass",
+        "2": "dirt_road",
+        "3": "water",
+        "4": "planks",
+        "5": "sand",
+        "16": "tree",
+        "17": "wall_stone",
+        "18": "door_wood",
+        "19": "well",
+        "20": "fence",
+        "21": "roof_thatch",
+        "22": "flowers",
+        "23": "signpost"
+      }
+    }
+  }
+}

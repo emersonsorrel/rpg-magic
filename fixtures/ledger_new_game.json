@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "seed": 8471029,
+  "premise": "A river town's mine floods, and the water comes back warm.",
+  "outline": {
+    "tone": "melancholy pastoral fantasy",
+    "antagonist": {
+      "name": "The Kindled Deep",
+      "motive": "Something old under the mine is trying to stay warm, and the river is how it reaches for heat. It is not cruel. It is simply cold, and it has been cold a very long time."
+    },
+    "beats": [
+      {
+        "id": "b1",
+        "summary": "Arrive in Callow Ford. Learn the mine flooded nine days ago and the river now runs warm.",
+        "zone_hint": "starting town",
+        "status": "active"
+      },
+      {
+        "id": "b2",
+        "summary": "Descend the flooded upper workings. Find the miners' camp abandoned mid-meal.",
+        "zone_hint": "flooded mine, upper",
+        "status": "pending"
+      },
+      {
+        "id": "b3",
+        "summary": "The deep door will not open to any key but heat. Bring the Ember Sigil down to it.",
+        "zone_hint": "flooded mine, deep door",
+        "status": "pending"
+      },
+      {
+        "id": "b4",
+        "summary": "Meet the Kindled Deep. Choose whether to bank the fire or let the river cool.",
+        "zone_hint": "the hearth chamber",
+        "status": "pending"
+      }
+    ]
+  },
+  "obligations": [
+    {
+      "id": "obl_ember_sigil",
+      "kind": "key_item",
+      "name": "Ember Sigil",
+      "item_id": "ember_sigil",
+      "gates_beat": "b3",
+      "required_by": "zone_mine_b3",
+      "must_place_before": "zone_mine_b3",
+      "placed_in": "zone_town_01",
+      "status": "placed"
+    }
+  ],
+  "defined_items": [
+    {
+      "id": "ember_sigil",
+      "name": "Ember Sigil",
+      "kind": "key_item",
+      "description": "A palm-sized iron disc that has never once been cold."
+    }
+  ],
+  "zones": {
+    "zone_town_01": {
+      "id": "zone_town_01",
+      "kind": "town",
+      "committed": true,
+      "summary": "Callow Ford, a river town of nine houses. The mine upriver flooded nine days ago and the water came back warm.",
+      "exits": {
+        "north": "zone_mine_b1"
+      },
+      "notable_entities": [
+        "npc_mayor_helle",
+        "npc_smith_dorn"
+      ]
+    },
+    "zone_mine_b1": {
+      "id": "zone_mine_b1",
+      "kind": "dungeon",
+      "committed": false,
+      "exits": {
+        "south": "zone_town_01",
+        "down": "zone_mine_b2"
+      },
+      "summary": "Upper workings of the Callow mine, waist-deep and warm. Not yet authored."
+    },
+    "zone_mine_b2": {
+      "id": "zone_mine_b2",
+      "kind": "dungeon",
+      "committed": false,
+      "exits": {
+        "up": "zone_mine_b1",
+        "down": "zone_mine_b3"
+      }
+    },
+    "zone_mine_b3": {
+      "id": "zone_mine_b3",
+      "kind": "dungeon",
+      "committed": false,
+      "exits": {
+        "up": "zone_mine_b2"
+      }
+    }
+  },
+  "flags": {
+    "met_mayor": false,
+    "mine_opened": false
+  },
+  "party": [
+    {
+      "id": "pc_wren",
+      "name": "Wren",
+      "level": 3,
+      "hp": 44,
+      "max_hp": 44,
+      "mp": 6,
+      "max_mp": 6,
+      "xp": 120,
+      "stats": {
+        "atk": 14,
+        "def": 9,
+        "agi": 11,
+        "mag": 4
+      },
+      "skills": [
+        "cut",
+        "guard"
+      ]
+    },
+    {
+      "id": "pc_sabel",
+      "name": "Sabel",
+      "level": 3,
+      "hp": 31,
+      "max_hp": 31,
+      "mp": 22,
+      "max_mp": 22,
+      "xp": 118,
+      "stats": {
+        "atk": 7,
+        "def": 6,
+        "agi": 13,
+        "mag": 15
+      },
+      "skills": [
+        "spark",
+        "mend"
+      ]
+    }
+  ],
+  "inventory": [
+    {
+      "item_id": "potion",
+      "qty": 3
+    },
+    {
+      "item_id": "bronze_sword",
+      "qty": 1
+    }
+  ],
+  "player_position": {
+    "zone": "zone_town_01",
+    "x": 10,
+    "y": 12
+  }
+}

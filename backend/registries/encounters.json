@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "_note": "Enemy templates are keyed by tag (design doc 7). Encounter tables in a Zone Package reference these ids plus level scaling.",
+  "encounters": [
+    { "id": "mine_rats",    "display_name": "Cave Rats",     "members": [{ "template": "beast_rat", "count": 3 }], "base_level": 2 },
+    { "id": "mine_bats",    "display_name": "Sump Bats",     "members": [{ "template": "beast_bat", "count": 2 }], "base_level": 3 },
+    { "id": "mine_drowned", "display_name": "Drowned Miner", "members": [{ "template": "undead_miner", "count": 1 }], "base_level": 5 }
+  ],
+  "templates": [
+    { "id": "beast_rat",    "tags": ["beast", "biome:mine"],  "hp": 18, "atk": 6,  "def": 3, "agi": 9,  "xp": 4 },
+    { "id": "beast_bat",    "tags": ["beast", "biome:mine"],  "hp": 14, "atk": 5,  "def": 2, "agi": 14, "xp": 5 },
+    { "id": "undead_miner", "tags": ["undead", "biome:mine"], "hp": 48, "atk": 11, "def": 7, "agi": 5,  "xp": 18 }
+  ]
+}
