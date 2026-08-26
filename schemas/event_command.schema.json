@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jrpg-forge.dev/schemas/event_command.schema.json",
+  "$id": "https://rpg-magic.dev/schemas/event_command.schema.json",
   "title": "Event Command",
   "description": "One command from the closed event vocabulary (design doc 3.3). The LLM never emits code -- only arrays of these. Anything outside this vocabulary is rejected at validation. Recursion: nested scripts ($defs/script) point back at this schema's root.",
 

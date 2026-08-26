@@ -20,7 +20,7 @@ DEFAULT_LEDGER = ROOT / "fixtures" / "ledger_new_game.json"
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="jrpg-forge validate")
+    parser = argparse.ArgumentParser(prog="rpg-magic validate")
     parser.add_argument("packages", nargs="*", type=pathlib.Path,
                         help="zone packages to validate (default: fixtures/zone_town_01.json)")
     parser.add_argument("--ledger", type=pathlib.Path, default=DEFAULT_LEDGER)

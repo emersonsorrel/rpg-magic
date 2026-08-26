@@ -1,4 +1,4 @@
-# jrpg-forge
+# rpg-magic
 
 A procedurally generated, LLM-authored JRPG. The engine owns structure and truth;
 the model authors content inside a schema the engine validates. See

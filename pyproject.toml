@@ -1,5 +1,5 @@
 [project]
-name = "jrpg-forge"
+name = "rpg-magic"
 version = "0.0.1"
 description = "Procedurally generated, LLM-authored JRPG engine"
 requires-python = ">=3.11"

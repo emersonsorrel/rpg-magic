@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jrpg-forge.dev/schemas/ledger.schema.json",
+  "$id": "https://rpg-magic.dev/schemas/ledger.schema.json",
   "title": "World Ledger",
   "description": "Engine-owned source of truth (design doc 3.1). Every fact that must survive across zones lives here, never in the model's context. The ledger doubles as the save file.",
 

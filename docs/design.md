@@ -1,6 +1,6 @@
 # Design Document: Procedurally Generated, LLM-Authored JRPG Engine
 
-**Working title:** `jrpg-forge` (rename freely — this is just the repo slug used throughout)
+**Working title:** `rpg-magic` (renamed from `jrpg-forge`; the slug is not load-bearing)
 **Status:** Design draft, pre-implementation
 **Target first milestone:** Playable vertical slice — one town, one dungeon, turn-based battles
 
@@ -332,7 +332,7 @@ Deterministic, no LLM at runtime.
 ## 8. Repository layout
 
 ```
-jrpg-forge/
+rpg-magic/
 ├─ backend/
 │  ├─ app.py                 # FastAPI entrypoint
 │  ├─ ledger/                # World Ledger model, persistence, obligations

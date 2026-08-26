@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://jrpg-forge.dev/schemas/zone_package.schema.json",
+  "$id": "https://rpg-magic.dev/schemas/zone_package.schema.json",
   "title": "Zone Package",
   "description": "The handoff artifact between backend and client (design doc 3.2). One document fully describes one playable zone. Shape stays close to Tiled TMJ so Phaser's tilemap loader needs minimal adaptation.",
 
