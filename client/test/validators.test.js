@@ -64,3 +64,24 @@ describe("event command vocabulary", () => {
     assert.equal(validateEventCommand({ op: "SET_FLAG", flag: "f", value: "yes" }), false);
   });
 });
+
+describe("the generated validator tracks /schemas", () => {
+  it("is not stale", async () => {
+    // The committed validator is build output. If a schema changes and nobody
+    // reruns the build, the client silently rejects perfectly good documents --
+    // which is exactly what happened when `spawn` was added to the ledger.
+    const { schemaHash } = await import("../tools/build-validator.js");
+    const fs = await import("node:fs");
+    const url = await import("node:url");
+    const generated = fs.readFileSync(
+      url.fileURLToPath(new URL("../src/game/generated/validators.js", import.meta.url)),
+      "utf8"
+    );
+    const stamped = generated.match(/schema-hash: ([0-9a-f]+)/)?.[1];
+    assert.equal(
+      stamped,
+      schemaHash(),
+      "run `npm run build:validator` — /schemas has changed since this was generated"
+    );
+  });
+});

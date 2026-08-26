@@ -4,32 +4,33 @@ A procedurally generated, LLM-authored JRPG. The engine owns structure and truth
 the model authors content inside a schema the engine validates. See
 `docs/design.md` for the full design.
 
-**Status: M1 (Runtime on canned data) complete.** No backend, no LLM yet, by design.
+**Status: M2 (Proc-gen + packaging) complete.** No LLM yet, by design.
 
 ## Quick start
 
-Backend contracts and validator:
+Install:
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m backend.validation.cli --broken
-.venv/bin/python -m pytest -q
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && (cd client && npm install --ignore-scripts)
 ```
 
-Client:
+Play it — the authoring service serves the client too, so this is the only command:
 
 ```bash
-cd client && npm install --ignore-scripts && npm test
+.venv/bin/python -m uvicorn backend.app:app --port 8000
 ```
 
-Play it — serve the repo root, then open `/client/index.html`:
+Then open http://127.0.0.1:8000/client/index.html
+
+Tests:
 
 ```bash
-python3 -m http.server 5173 --directory "$(git rev-parse --show-toplevel)"
+.venv/bin/python -m pytest -q && (cd client && npm test)
 ```
 
 Arrows or WASD to walk, Space/Enter to talk and advance text, Up/Down to pick an
-option. Walk up to Mayor Helle, Dorn, or the chest by the south fence.
+option. Walk north out of town to reach the mine; the floor below it is generated
+the first time you take the stairs. The seed box in the shell rebuilds the world.
 
 ### Why there is no bundler
 
@@ -60,7 +61,11 @@ fixtures/
 backend/
   registries/                  items, encounters, tilesets, tag vocabulary
   validation/                  schema pass + semantic/referential pass + CLI
-tests/                         33 tests; the M0 acceptance gate
+  procgen/                     deterministic, LLM-free (rng, layout, town, dungeon)
+  packaging/assemble.py        Layout + slots -> Zone Package
+  world/                       ledger creation, persistence, the commit path
+  app.py                       FastAPI authoring service; also serves the client
+tests/                         119 tests: contracts, proc-gen properties, the API
 client/
   index.html                   import map + shell layout; no bundler
   src/game/
@@ -127,8 +132,8 @@ Choices the design doc left open or did not cover, resolved here:
   partially-run cutscene cannot drift.
 - **`schema_version` on both the ledger and the package** from day one (open
   question 6).
-- **Doors are collision tiles at M0.** Interiors as separate small packages
-  (open question 1) lands in M2.
+- **Doors are collision tiles.** Interiors as separate small packages
+  (open question 1) are still deferred — see the M2 notes below.
 
 ## Decisions taken during M1
 
@@ -149,10 +154,36 @@ Choices the design doc left open or did not cover, resolved here:
   `START_BATTLE` says battles arrive in M4, `WARP` says the target zone is not
   authored yet. Both are clearly marked as placeholders on screen.
 
-## Next: M2
+## Decisions taken during M2
 
-Backend generates a town and a dungeon floor deterministically from a seed and
-emits valid Zone Packages with placeholder-filled slots. The client swaps
-`zoneLoader.js`'s two fixture URLs for `api.js` calls; nothing downstream of the
-Zone Package needs to change. *Done when: two generated zones connect and are
-walkable.*
+- **Neighbouring zones agree on their shared door by derivation, not by
+  patching.** A town is committed before the mine north of it exists, yet its
+  warp has to name the exact tile the player lands on over there. Since
+  committed is permanent, the arrival tile is made a pure function of
+  `(seed, zone_id, edge)` — see `gateway()` / `arrival()` in `procgen/layout.py`.
+  Both zones can compute it, and the second one to be generated treats it as a
+  constraint it must leave walkable and connected. Zone *dimensions* are derived
+  the same way, so a zone can reason about a neighbour that does not exist yet.
+- **Connectivity is enforced, not hoped for.** The dungeon joins leftover
+  components until one remains. A floor that strands its own stairs is the
+  failure the obligation machinery exists to prevent.
+- **Placeholder content is unmistakable.** Generated dialogue is bracketed and
+  names the slot hint that produced it. Content that reads as authored but is
+  not would make it impossible to tell later which zones the model has written.
+- **The backend serves the client.** One origin, no CORS, one command to run
+  everything.
+- **The generated client validator is fingerprinted.** Changing a schema without
+  rerunning `npm run build:validator` used to fail at runtime with a confusing
+  rejection; now it fails a test that says what to run.
+- **Deferred: town interiors.** Open question 1 (interiors as separate small
+  packages) is listed under M2's town steps in the design doc, but the milestone
+  gate does not need it and it is a milestone's worth of work on its own. Doors
+  are still collision tiles. This is the one part of M2's brief left undone.
+
+## Next: M3
+
+The outline call, the zone-authoring call, the provider abstraction, the
+validator's repair loop, and the template fallback. The seam is already open:
+`world/authoring.py` runs proc-gen → assemble → validate → commit, and M3
+inserts the authoring call between assemble and validate. *Done when: a fresh
+seed produces a town whose NPCs discuss a coherent premise.*

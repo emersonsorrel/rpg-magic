@@ -13,9 +13,11 @@
  * Re-run whenever anything in /schemas changes.
  */
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 const Ajv = require("ajv/dist/2020.js");
@@ -91,57 +93,79 @@ function __equal(a, b) {
 }
 `;
 
+const SCHEMA_FILES = [
+  "event_command.schema.json",
+  "zone_package.schema.json",
+  "ledger.schema.json",
+];
+
+/** Fingerprint of the inputs, stamped into the output so a stale build is a
+ *  test failure rather than a puzzling runtime rejection. */
+export function schemaHash(dir = schemaDir) {
+  const hash = crypto.createHash("sha256");
+  for (const name of SCHEMA_FILES) hash.update(fs.readFileSync(path.join(dir, name)));
+  return hash.digest("hex").slice(0, 16);
+}
+
 const load = (name) => JSON.parse(fs.readFileSync(path.join(schemaDir, name), "utf8"));
 
-const eventCommand = load("event_command.schema.json");
-const zonePackage = load("zone_package.schema.json");
-const ledger = load("ledger.schema.json");
+export function build() {
+  const eventCommand = load("event_command.schema.json");
+  const zonePackage = load("zone_package.schema.json");
+  const ledger = load("ledger.schema.json");
 
-const ajv = new AjvClass({
-  code: { source: true, esm: true },
-  strict: false,
-  allErrors: true,
-});
-ajv.addSchema(eventCommand);
-ajv.addSchema(zonePackage);
-ajv.addSchema(ledger);
+  const ajv = new AjvClass({
+    code: { source: true, esm: true },
+    strict: false,
+    allErrors: true,
+  });
+  ajv.addSchema(eventCommand);
+  ajv.addSchema(zonePackage);
+  ajv.addSchema(ledger);
 
-let code = generate(ajv, {
-  validateZonePackage: zonePackage.$id,
-  validateLedger: ledger.$id,
-  validateEventCommand: eventCommand.$id,
-});
+  let code = generate(ajv, {
+    validateZonePackage: zonePackage.$id,
+    validateLedger: ledger.$id,
+    validateEventCommand: eventCommand.$id,
+  });
 
-for (const [call, replacement] of Object.entries(INLINED_HELPERS)) {
-  code = code.split(call).join(replacement);
-}
+  for (const [call, replacement] of Object.entries(INLINED_HELPERS)) {
+    code = code.split(call).join(replacement);
+  }
 
-const leftover = code.match(/require\([^)]*\)/g);
-if (leftover) {
-  console.error(
-    `Ajv ${ajvVersion} emitted runtime helpers this build does not inline:\n` +
-      [...new Set(leftover)].map((r) => `  ${r}`).join("\n") +
-      "\nAdd them to INLINED_HELPERS in tools/build-validator.js."
+  const leftover = code.match(/require\([^)]*\)/g);
+  if (leftover) {
+    console.error(
+      `Ajv ${ajvVersion} emitted runtime helpers this build does not inline:\n` +
+        [...new Set(leftover)].map((r) => `  ${r}`).join("\n") +
+        "\nAdd them to INLINED_HELPERS in tools/build-validator.js."
+    );
+    process.exit(1);
+  }
+
+  // "use strict" is implicit in a module, and leaving it first would push the
+  // helper prelude below the export that uses it.
+  code = code.replace(/^"use strict";/, "");
+
+  fs.mkdirSync(path.dirname(outFile), { recursive: true });
+  fs.writeFileSync(
+    outFile,
+    "// GENERATED FILE -- do not edit.\n" +
+      `// Built from /schemas by client/tools/build-validator.js (Ajv ${ajvVersion}).\n` +
+      "// Regenerate with: npm run build:validator\n" +
+      `// schema-hash: ${schemaHash()}\n` +
+      HELPER_PRELUDE +
+      code +
+      "\n"
   );
-  process.exit(1);
+
+  console.log(
+    `wrote ${path.relative(clientDir, outFile)} ` +
+      `(${(fs.statSync(outFile).size / 1024).toFixed(1)} KB, no imports)`
+  );
 }
 
-// "use strict" is implicit in a module, and leaving it first would push the
-// helper prelude below the export that uses it.
-code = code.replace(/^"use strict";/, "");
 
-fs.mkdirSync(path.dirname(outFile), { recursive: true });
-fs.writeFileSync(
-  outFile,
-  "// GENERATED FILE -- do not edit.\n" +
-    `// Built from /schemas by client/tools/build-validator.js (Ajv ${ajvVersion}).\n` +
-    "// Regenerate with: npm run build:validator\n" +
-    HELPER_PRELUDE +
-    code +
-    "\n"
-);
-
-console.log(
-  `wrote ${path.relative(clientDir, outFile)} ` +
-    `(${(fs.statSync(outFile).size / 1024).toFixed(1)} KB, no imports)`
-);
+// Only build when run directly. Importing this module (the staleness test does)
+// must not regenerate the very file that test is checking.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) build();

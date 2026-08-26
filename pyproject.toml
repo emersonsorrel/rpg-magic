@@ -3,7 +3,7 @@ name = "rpg-magic"
 version = "0.0.1"
 description = "Procedurally generated, LLM-authored JRPG engine"
 requires-python = ">=3.11"
-dependencies = ["jsonschema>=4.20"]
+dependencies = ["jsonschema>=4.20", "fastapi>=0.115", "uvicorn>=0.30"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

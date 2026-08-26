@@ -131,6 +131,13 @@
             "type": "array",
             "maxItems": 32,
             "items": { "$ref": "#/$defs/identifier" }
+          },
+          "spawn": {
+            "description": "Tile the generator chose as this zone's default arrival point. Written on commit.",
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "integer", "minimum": 0, "maximum": 127 }
           }
         }
       }

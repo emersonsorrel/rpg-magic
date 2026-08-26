@@ -1,14 +1,16 @@
 import * as Phaser from "phaser";
 
+import * as api from "../../api.js";
 import { EventRunner } from "../EventRunner.js";
 import { createHost } from "../WorldState.js";
 import { bus, Events } from "../GameBus.js";
 import { resolveSprite } from "../assetPack.js";
-import { TILE, TILESET_KEY, DIRECTIONS } from "../textures.js";
+import { TILE, tilesetKey } from "../textures.js";
 
 const STEP_MS = 130;
 const FRAME_FOR = { down: 0, left: 1, right: 2, up: 3 };
 const DELTA = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] };
+
 // Keyed by both KeyboardEvent.code and .key: `code` is the right thing to use
 // for physical layout, but it is absent on some synthetic and IME-generated
 // events, and a dropped input is worse than an extra table entry.
@@ -27,6 +29,9 @@ const isConfirm = (event) =>
  * layer arrays (not from a Tiled file), a grid-stepped player, collision
  * against the collision layer, and interaction that hands entity scripts to
  * the Event Runner.
+ *
+ * Stepping onto a warp asks the backend for the target zone. Whether that zone
+ * already existed or was generated on the spot is not this scene's business.
  */
 export class OverworldScene extends Phaser.Scene {
   constructor() {
@@ -38,23 +43,25 @@ export class OverworldScene extends Phaser.Scene {
     this.world = this.registry.get("world");
     this.busy = false;
     this.moving = false;
+    this.queued = null;
+    this.pendingWarp = null;
     this.facing = "up";
 
     this.world.declareFlags(this.pkg.declares_flags);
     this.buildMap();
     this.buildEntities();
     this.buildPlayer();
+    this.buildCamera();
 
     this.ui = this.scene.get("UIScene");
     this.runner = new EventRunner(createHost(this.world, this.makeIo()));
 
-    this.input.keyboard.addCapture("UP,DOWN,LEFT,RIGHT,SPACE,ENTER,W,A,S,D");
     this.cursors = this.input.keyboard.createCursorKeys();
     this.wasd = this.input.keyboard.addKeys("W,A,S,D");
+    this.input.keyboard.addCapture("UP,DOWN,LEFT,RIGHT,SPACE,ENTER,W,A,S,D");
 
     // Held keys are polled in update(); a tap shorter than one frame would be
     // missed by polling alone, so keydown queues a single step as well.
-    this.queued = null;
     this.input.keyboard.on("keydown", (event) => {
       if (isConfirm(event)) {
         if (!this.busy && !this.ui.open && !this.moving) this.tryInteract();
@@ -66,8 +73,10 @@ export class OverworldScene extends Phaser.Scene {
 
     bus.emit(Events.ZONE_LOADED, {
       id: this.pkg.id,
+      kind: this.pkg.kind,
       summary: this.pkg.summary,
       entities: this.pkg.entities.length,
+      size: [this.pkg.width, this.pkg.height],
     });
   }
 
@@ -88,8 +97,9 @@ export class OverworldScene extends Phaser.Scene {
       return rows;
     };
 
+    const key = tilesetKey(this.pkg.tileset);
     const map = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width, height });
-    const tileset = map.addTilesetImage(TILESET_KEY, TILESET_KEY, TILE, TILE, 0, 0);
+    const tileset = map.addTilesetImage(key, key, TILE, TILE, 0, 0);
 
     map.createBlankLayer("ground", tileset, 0, 0).putTilesAt(to2D(layers.ground), 0, 0).setDepth(0);
     // 0 means empty in the decor layer, which is -1 to Phaser.
@@ -108,7 +118,7 @@ export class OverworldScene extends Phaser.Scene {
     for (const entity of this.pkg.entities) {
       const { key, fallback } = resolveSprite(entity.sprite_tags, { seed });
       if (fallback) {
-        bus.emit(Events.LOG, `no sprite matched ${entity.id} [${(entity.sprite_tags ?? []).join(", ")}] - using generic`);
+        bus.emit(Events.LOG, `no sprite matched ${entity.id} [${(entity.sprite_tags ?? []).join(", ")}] — using generic`);
       }
       const sprite = this.add
         .sprite(entity.x * TILE + TILE / 2, entity.y * TILE + TILE, key, 0)
@@ -116,9 +126,7 @@ export class OverworldScene extends Phaser.Scene {
         .setDepth(10 + entity.y);
 
       this.entities.set(entity.id, { def: entity, sprite });
-
-      const blocking = entity.blocking ?? entity.type !== "trigger";
-      if (blocking) this.blocked.add(`${entity.x},${entity.y}`);
+      if (entity.blocking ?? entity.type !== "trigger") this.blocked.add(`${entity.x},${entity.y}`);
     }
   }
 
@@ -127,9 +135,16 @@ export class OverworldScene extends Phaser.Scene {
     this.px = start.x;
     this.py = start.y;
     this.player = this.add
-      .sprite(this.px * TILE + TILE / 2, this.py * TILE + TILE, "sprite_player", FRAME_FOR.up)
+      .sprite(this.px * TILE + TILE / 2, this.py * TILE + TILE, "sprite_player", FRAME_FOR.down)
       .setOrigin(0.5, 1)
       .setDepth(10 + this.py);
+  }
+
+  buildCamera() {
+    const camera = this.cameras.main;
+    camera.setBounds(0, 0, this.mapWidth * TILE, this.mapHeight * TILE);
+    camera.startFollow(this.player, true, 0.18, 0.18);
+    camera.fadeIn(220, 0, 0, 0);
   }
 
   // --- the Event Runner's presentation half ------------------------------
@@ -149,11 +164,10 @@ export class OverworldScene extends Phaser.Scene {
         });
         return "win";
       },
-      warp: async ({ toZone, toX, toY }) => {
-        await this.ui.showText({
-          speaker: null,
-          text: `[${toZone} has not been authored yet. M2 generates it; the backend will serve it at (${toX},${toY}).]`,
-        });
+      // Recorded, not acted on: WARP halts the script, and tearing the scene
+      // down while the runner is still unwinding through it would be a mess.
+      warp: async (destination) => {
+        this.pendingWarp = destination;
       },
     };
   }
@@ -173,6 +187,51 @@ export class OverworldScene extends Phaser.Scene {
       });
       target.sprite.setDepth(10 + step.y);
     }
+  }
+
+  // --- zone transitions --------------------------------------------------
+
+  async enterZone({ toZone, toX, toY }) {
+    this.busy = true;
+    this.cameras.main.fadeOut(180, 0, 0, 0);
+    const curtain = this.showCurtain(`Entering ${toZone}…`);
+    bus.emit(Events.LOG, `requesting ${toZone} from the authoring service`);
+
+    try {
+      const started = performance.now();
+      const pkg = await api.getZone(toZone);
+      const ms = Math.round(performance.now() - started);
+      bus.emit(Events.LOG, `${toZone} ready in ${ms}ms (${pkg.width}×${pkg.height})`);
+
+      this.world.setPosition(toZone, toX, toY);
+      api.savePosition(toZone, toX, toY).catch(() => {});
+      this.registry.set("zone", pkg);
+      this.scene.restart();
+    } catch (error) {
+      console.error(error);
+      curtain.destroy();
+      this.cameras.main.fadeIn(180, 0, 0, 0);
+      bus.emit(Events.LOG, `failed to enter ${toZone}: ${error.message}`);
+      await this.ui.showText({ speaker: null, text: `[could not enter ${toZone} — see the log]` });
+      this.busy = false;
+      this.pendingWarp = null;
+    }
+  }
+
+  showCurtain(message) {
+    const { width, height } = this.scale;
+    const container = this.add.container(0, 0).setDepth(2000).setScrollFactor(0);
+    container.add(this.add.rectangle(0, 0, width, height, 0x0b0d12, 0.85).setOrigin(0));
+    container.add(
+      this.add
+        .text(width / 2, height / 2, message, {
+          fontFamily: "monospace",
+          fontSize: "9px",
+          color: "#ffd98a",
+        })
+        .setOrigin(0.5)
+    );
+    return container;
   }
 
   // --- movement ----------------------------------------------------------
@@ -233,7 +292,9 @@ export class OverworldScene extends Phaser.Scene {
 
   checkWarp() {
     const warp = this.pkg.warps.find((w) => w.x === this.px && w.y === this.py);
-    if (warp) this.runScript([{ op: "WARP", to_zone: warp.to_zone, to_x: warp.to_x, to_y: warp.to_y }]);
+    if (warp) {
+      this.enterZone({ toZone: warp.to_zone, toX: warp.to_x, toY: warp.to_y });
+    }
   }
 
   // --- interaction -------------------------------------------------------
@@ -270,13 +331,17 @@ export class OverworldScene extends Phaser.Scene {
       bus.emit(Events.LOG, `script error: ${error.message}`);
     } finally {
       bus.emit(Events.SCRIPT_END, { sourceId });
-      // Swallow the keypress that closed the last box so it cannot immediately
-      // re-trigger the same entity.
-      this.time.delayedCall(120, () => {
-        this.busy = false;
-      });
+      const warp = this.pendingWarp;
+      this.pendingWarp = null;
+      if (warp) {
+        this.enterZone(warp);
+      } else {
+        // Swallow the keypress that closed the last box so it cannot
+        // immediately re-trigger the same entity.
+        this.time.delayedCall(120, () => {
+          this.busy = false;
+        });
+      }
     }
   }
 }
-
-export { DIRECTIONS };

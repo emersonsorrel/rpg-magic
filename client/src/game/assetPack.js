@@ -21,6 +21,8 @@ export const PLACEHOLDER_PACK = {
     { key: "sprite_elder", tags: ["human", "elder", "authority", "biome:temperate"] },
     { key: "sprite_smith", tags: ["human", "adult", "smith", "biome:temperate"] },
     { key: "sprite_villager", tags: ["human", "adult", "farmer", "biome:temperate"] },
+    { key: "sprite_merchant", tags: ["human", "adult", "merchant", "biome:temperate"] },
+    { key: "sprite_miner", tags: ["human", "adult", "miner", "biome:mine"] },
     { key: "sprite_chest", tags: ["chest", "wooden"] },
     { key: "sprite_sign", tags: ["signpost", "prop", "wooden"] },
     { key: "sprite_generic", tags: ["human"] },

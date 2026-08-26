@@ -1,26 +1,45 @@
 {
   "schema_version": 1,
-  "_note": "Logical tilesets. `names` exists so hand-authored fixtures and proc-gen output stay readable; the runtime only needs tile_count and file.",
+  "_note": "Tile indices carry the same meaning in every tileset -- 1 is always the primary floor, 17 always a wall. Only the art changes. That keeps the client's painter table small and lets a zone swap biomes without the generator caring.",
+  "index_meanings": {
+    "0": "empty",
+    "1": "floor_primary",
+    "2": "floor_path",
+    "3": "water",
+    "4": "planks",
+    "5": "floor_dry",
+    "16": "blocker_natural",
+    "17": "wall",
+    "18": "door",
+    "19": "feature",
+    "20": "barrier",
+    "21": "roof",
+    "22": "detail",
+    "23": "post",
+    "24": "stairs_up",
+    "25": "stairs_down"
+  },
   "tilesets": {
     "overworld_temperate": {
       "file": "overworld_temperate.png",
       "tags": ["biome:temperate"],
       "tile_count": 32,
       "names": {
-        "0": "empty",
-        "1": "grass",
-        "2": "dirt_road",
-        "3": "water",
-        "4": "planks",
-        "5": "sand",
-        "16": "tree",
-        "17": "wall_stone",
-        "18": "door_wood",
-        "19": "well",
-        "20": "fence",
-        "21": "roof_thatch",
-        "22": "flowers",
-        "23": "signpost"
+        "1": "grass", "2": "dirt_road", "3": "water", "4": "planks", "5": "sand",
+        "16": "tree", "17": "wall_stone", "18": "door_wood", "19": "well",
+        "20": "fence", "21": "roof_thatch", "22": "flowers", "23": "signpost",
+        "24": "stairs_up", "25": "stairs_down"
+      }
+    },
+    "mine_damp": {
+      "file": "mine_damp.png",
+      "tags": ["biome:mine"],
+      "tile_count": 32,
+      "names": {
+        "1": "cave_floor", "2": "gravel", "3": "sump_water", "4": "planks", "5": "dust",
+        "16": "rock_column", "17": "cave_wall", "18": "door_iron", "19": "winch",
+        "20": "rubble", "21": "ceiling_drip", "22": "puddle", "23": "support_beam",
+        "24": "stairs_up", "25": "stairs_down"
       }
     }
   }
