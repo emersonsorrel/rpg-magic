@@ -61,7 +61,53 @@ async def author_outline(premise: str | None, *, provider=None) -> dict:
     return completion.data
 
 
-def apply_outline(ledger: dict, data: dict, zone_order: list[str]) -> None:
+KIND_SLUG = {"town": "town", "dungeon": "depths"}
+
+
+def plan_from_beats(beats: list[dict]) -> tuple[dict, list[str]]:
+    """Turn the outline's beats into the zone graph the world is built from.
+
+    One beat, one place, in the order given. This is what makes the outline a
+    spine rather than a backdrop: the story's shape and the map's shape are the
+    same list.
+
+    Two rules the engine imposes regardless of what the model said:
+    the first place is always a town, because the party has to start somewhere
+    they can be talked to; and consecutive dungeons connect by stairs while
+    anything involving a settlement connects by road, because that is what the
+    generators know how to carve.
+    """
+    zones: dict[str, dict] = {}
+    order: list[str] = []
+
+    for index, beat in enumerate(beats):
+        kind = "town" if index == 0 else beat.get("kind", "dungeon")
+        if kind not in KIND_SLUG:
+            kind = "dungeon"
+        zone_id = f"zone_{KIND_SLUG[kind]}_{index + 1:02d}"
+        zones[zone_id] = {
+            "id": zone_id,
+            "kind": kind,
+            "committed": False,
+            "exits": {},
+        }
+        order.append(zone_id)
+
+    for here, next_zone in zip(order, order[1:]):
+        deeper = zones[here]["kind"] == "dungeon" and zones[next_zone]["kind"] == "dungeon"
+        forward, back = ("down", "up") if deeper else ("north", "south")
+        zones[here]["exits"][forward] = next_zone
+        zones[next_zone]["exits"][back] = here
+
+    return zones, order
+
+
+class OutlineTooLate(Exception):
+    """Applying an outline replaces the zone plan wholesale, which is only safe
+    before anything has been committed."""
+
+
+def apply_outline(ledger: dict, data: dict) -> None:
     """Write the outline into the ledger, and turn its named key items into real
     obligations with concrete zones attached.
 
@@ -69,12 +115,24 @@ def apply_outline(ledger: dict, data: dict, zone_order: list[str]) -> None:
     decides which zone holds it: the zone immediately before the one that needs
     it. That is the whole Fire Key mechanism, and the model never touches it.
     """
+    committed = [z for z, zone in (ledger.get("zones") or {}).items() if zone.get("committed")]
+    if committed:
+        # A committed package's warps name zones by id. Swapping the plan under
+        # them would leave those warps pointing at zones that no longer exist —
+        # which is exactly the shape of bug this refuses to create quietly.
+        raise OutlineTooLate(
+            f"cannot apply an outline after {sorted(committed)} have been committed"
+        )
+
     beats = []
     for index, beat in enumerate(data.get("beats", [])):
         beats.append({
             "id": beat.get("id") or f"b{index + 1}",
             "summary": beat["summary"],
             "zone_hint": beat.get("zone_hint", ""),
+            # Carried through, not dropped: one beat becomes one zone, so this
+            # is what decides whether that place is a town or a dungeon.
+            "kind": beat.get("kind", "dungeon"),
             "status": "active" if index == 0 else "pending",
         })
 
@@ -85,13 +143,25 @@ def apply_outline(ledger: dict, data: dict, zone_order: list[str]) -> None:
         "beats": beats,
     }
 
+    # The zone plan is replaced wholesale: new_game's is a stub for worlds with
+    # no outline, and nothing has been committed yet at this point.
+    zones, zone_order = plan_from_beats(beats)
+    ledger["zones"] = zones
+    ledger["player_position"] = {"zone": zone_order[0], "x": 1, "y": 1}
+
     beat_zone = {beat["id"]: zone_order[min(i, len(zone_order) - 1)] for i, beat in enumerate(beats)}
 
     obligations, defined = [], []
+    gated: set[str] = set()
     for obligation in data.get("obligations", []):
         item_id = slugify(obligation["name"])
         gates = obligation.get("gates_beat")
         required_by = beat_zone.get(gates, zone_order[-1])
+        # One door per threshold. Two keys for the same doorway would leave the
+        # second with nothing to open, and `locked` holds a single item.
+        if required_by in gated or required_by == zone_order[0]:
+            continue
+        gated.add(required_by)
         obligations.append({
             "id": f"obl_{item_id}"[:64],
             "kind": "key_item",

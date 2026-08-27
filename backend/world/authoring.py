@@ -133,17 +133,25 @@ async def get_or_generate(ledger: dict, zone_id: str, store: WorldStore) -> dict
     return await commit(ledger, zone_id, store)
 
 
-async def begin(seed: int, store: WorldStore, premise: str | None = None) -> dict:
+async def begin(seed: int, store: WorldStore, premise: str | None = None,
+                outline: dict | None = None) -> dict:
     """Start a world: outline first, because every zone authored afterwards is
-    written against it."""
+    written against it — and because the outline decides the zone plan, it has
+    to land before anything is committed.
+
+    `outline` supplies one directly instead of calling a model. Tests use it to
+    exercise world shapes without paying for them.
+    """
     from . import new_game
 
     ledger = new_game.create(seed, premise)
 
-    if authoring_enabled():
+    if outline is not None:
+        apply_outline(ledger, outline)
+    elif authoring_enabled():
         try:
             outline = await author_outline(premise)
-            apply_outline(ledger, outline, zone_order(ledger))
+            apply_outline(ledger, outline)
         except LLMError as exc:
             # No outline means no obligations and a placeholder premise. The
             # game is duller, not broken.

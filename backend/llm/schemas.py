@@ -176,7 +176,12 @@ def outline_schema() -> dict:
     beat = _obj({
         "id": _string("b1, b2, b3 ...", max_length=8),
         "summary": _string("what happens in this beat", max_length=300),
-        "zone_hint": _string("where it happens, e.g. 'starting town'", max_length=80),
+        "zone_hint": _string("the name of the place it happens, e.g. 'the flooded upper workings'", max_length=80),
+        "kind": _string(
+            "what sort of place this is. 'town' for anywhere people live and talk; "
+            "'dungeon' for anywhere hostile and enclosed. The first beat is always a town.",
+            enum=["town", "dungeon"],
+        ),
     })
     obligation = _obj({
         "kind": _string("always key_item for now", enum=["key_item"]),
@@ -197,12 +202,19 @@ def outline_schema() -> dict:
             "motive": _string("what it wants and why", max_length=300),
         }),
         "beats": {
-            "type": "array", "minItems": 3, "maxItems": 5, "items": beat,
-            "description": "the spine of the story, in order",
+            "type": "array", "minItems": 4, "maxItems": 6, "items": beat,
+            "description": (
+                "the spine of the story, in order. Each one becomes a place the "
+                "player can walk to, so give them somewhere distinct to happen."
+            ),
         },
         "obligations": {
-            "type": "array", "minItems": 1, "maxItems": 2, "items": obligation,
-            "description": "key items that must exist before the beat they gate",
+            "type": "array", "minItems": 1, "maxItems": 3, "items": obligation,
+            "description": (
+                "key items that must exist before the beat they gate. Each becomes a "
+                "real locked door; the engine decides which threshold and where the "
+                "key is hidden."
+            ),
         },
         "party_seed": {
             "type": "array", "minItems": 2, "maxItems": 2, "items": party,

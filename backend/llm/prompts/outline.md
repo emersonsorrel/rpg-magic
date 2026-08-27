@@ -10,8 +10,13 @@ What matters:
 - **An antagonist with a reason.** Not evil for its own sake. The best ones are
   doing something understandable for reasons that stopped being reasonable a
   long time ago.
-- **Beats that escalate through places.** Each beat should happen somewhere a
-  player can walk to, and each should change what the previous places mean.
+- **Beats that escalate through places.** Every beat becomes a real place the
+  player walks to, laid out in the order you give them, so each one needs
+  somewhere distinct to happen. Say whether each is a `town` — anywhere people
+  live and can be talked to — or a `dungeon`, anywhere hostile and enclosed.
+  The first is always a town, because the party has to start somewhere safe.
+  Alternating gives the game a rhythm: somewhere to catch your breath, then
+  somewhere that costs you something.
 - **Obligations are promises.** Every key item you name in `obligations` will be
   physically placed in a zone before the beat it gates becomes reachable. Name
   one or two, no more, and make them things a person would actually keep.

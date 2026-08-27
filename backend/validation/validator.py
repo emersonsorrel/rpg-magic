@@ -334,7 +334,7 @@ def _check_placement(pkg: dict, ledger: dict, reg: Registries, collision, report
                     f"gate requires '{requires}', which is not a known item.",
                 )
             else:
-                _check_gate_order(ledger, warp, requires, path, report)
+                _check_gate_order(ledger, pkg, warp, requires, path, report)
 
     # Reachability: a zone whose chest is walled off is a softlock waiting to happen.
     if collision and isinstance(width, int) and isinstance(height, int):
@@ -374,7 +374,8 @@ def _check_placement(pkg: dict, ledger: dict, reg: Registries, collision, report
 # obligations -- the Fire Key check
 # --------------------------------------------------------------------------
 
-def _check_gate_order(ledger: dict, warp: dict, requires: str, path: str, report: Report) -> None:
+def _check_gate_order(ledger: dict, pkg: dict, warp: dict, requires: str, path: str,
+                      report: Report) -> None:
     """The Fire Key rule, enforced at the door rather than at the key.
 
     Design doc 4.4: the validator "refuses to let the player reach `required_by`
@@ -394,6 +395,14 @@ def _check_gate_order(ledger: dict, warp: dict, requires: str, path: str, report
             f"the way to '{warp.get('to_zone')}' is locked behind '{requires}', which no "
             f"obligation is responsible for placing. Nothing guarantees it exists.",
         )
+        return
+
+    # A zone may hold both the key and the door it opens — find the key in the
+    # mansion, then open the mansion's inner door. That is sound because the
+    # door leads *out* of this zone, so it can never stand between the player
+    # and the key. `_check_obligations` separately proves this package really
+    # does place what it claims.
+    if obligation["id"] in (pkg.get("fulfills_obligations") or []):
         return
 
     if obligation.get("status") == "open" or not obligation.get("placed_in"):

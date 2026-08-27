@@ -386,6 +386,43 @@ seven building interiors nobody enters and bills you for all of them:
 - **There is an off switch** in the shell, because this spends money in the
   background.
 
+## The outline is the map
+
+The zone plan used to be a hardcoded three-zone chain. It is now derived from
+the outline's beats: **one beat, one place, in the order given.** That is what
+makes the outline a spine rather than a backdrop — the story's shape and the
+map's shape are the same list, so a longer outline is a longer game.
+
+The outline call now says what *kind* of place each beat happens in, and the
+engine imposes two rules on top regardless of what came back:
+
+- **The first place is always a town**, whatever the model said. The party has
+  to start somewhere they can talk to someone.
+- **Consecutive dungeons connect by stairs; anything involving a settlement
+  connects by road.** That is what the generators know how to carve, and it is
+  not the model's decision to make.
+
+Applying an outline replaces the zone plan wholesale, so it is only legal before
+anything has been committed — a committed package's warps name zones by id, and
+swapping the plan under them would leave those warps pointing at zones that no
+longer exist. `apply_outline` raises `OutlineTooLate` rather than doing that
+quietly, and `begin()` takes an outline directly so tests can exercise world
+shapes without paying for them.
+
+Two consequences worth knowing:
+
+- **A zone may hold both a key and the door it opens.** When a gate lands on the
+  very first threshold there is nowhere earlier to hide the key. That is sound —
+  the door leads *out* of the zone, so it can never stand between the player and
+  the key — and the validator permits it only when the same package demonstrably
+  places the item.
+- **One door per threshold.** `locked` holds a single item, so a second
+  obligation gating the same doorway would open nothing; the engine drops it.
+
+The softlock harness now runs over synthesised outlines as well as the stub
+plan: four to six zones with up to three gates, which is where an ordering bug
+would actually live. Sabotaging the key placement fails 49 of its 50 assertions.
+
 ## Beyond M5
 
 What the design doc leaves open, roughly in the order it would pay off:
@@ -396,8 +433,8 @@ What the design doc leaves open, roughly in the order it would pay off:
   moves it, so the outline is a backdrop rather than a spine.
 - **Authored enemy framing** (design doc 7): the model may name enemies and
   write a boss's pre-fight lines; encounters currently use registry names.
-- **More world.** The zone plan is a fixed three-zone chain in `new_game`;
-  deriving it from the outline's beats is the obvious next structural step.
+- **A wilderness generator.** Beats may only be `town` or `dungeon`, because
+  those are the two generators that exist.
 
 ## Retired: M5
 

@@ -47,6 +47,10 @@
               "id": { "$ref": "#/$defs/identifier" },
               "summary": { "type": "string", "minLength": 1, "maxLength": 400 },
               "zone_hint": { "type": "string", "maxLength": 120 },
+              "kind": {
+                "description": "What sort of place this beat happens in. One beat becomes one zone, so this decides what gets generated.",
+                "enum": ["town", "dungeon"]
+              },
               "status": { "enum": ["pending", "active", "done"] }
             }
           }

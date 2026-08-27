@@ -187,3 +187,109 @@ def test_a_world_whose_key_was_never_placed_is_caught(tmp_path):
     with pytest.raises(ZoneRejected) as caught:
         asyncio.run(get_or_generate(ledger, "zone_mine_b1", store))
     assert "gate_before_key" in {issue.code for issue in caught.value.report.errors}
+
+
+# --- worlds shaped by an outline ------------------------------------------
+#
+# The stub plan above is three zones with one gate. A world built from a real
+# outline is four to six zones with up to three, which is where an ordering bug
+# would actually live. These synthesise outlines rather than calling a model, so
+# the shapes are varied, reproducible and free.
+
+import random
+
+
+
+def synthetic_outline(seed: int) -> dict:
+    rng = random.Random(seed)
+    count = rng.randint(4, 6)
+    beats = [
+        {
+            "id": f"b{i + 1}",
+            "summary": f"Beat {i + 1} happens.",
+            "zone_hint": f"place {i + 1}",
+            "kind": "town" if i == 0 else rng.choice(["town", "dungeon"]),
+        }
+        for i in range(count)
+    ]
+    # Gate somewhere past the opening, which is where a key can meaningfully sit.
+    gates = rng.sample([b["id"] for b in beats[1:]], k=rng.randint(1, min(3, count - 1)))
+    return {
+        "tone": "test",
+        "premise": "A synthetic world.",
+        "antagonist": {"name": "The Fixture", "motive": "To be traversed."},
+        "beats": beats,
+        "obligations": [
+            {"kind": "key_item", "name": f"Key {chr(65 + i)}", "gates_beat": beat_id}
+            for i, beat_id in enumerate(gates)
+        ],
+        "party_seed": [
+            {"name": "Ay", "role": "blade", "voice": "flat"},
+            {"name": "Bee", "role": "spark", "voice": "flat"},
+        ],
+    }
+
+
+def play_outlined(seed: int, root) -> Run:
+    """Same traversal, but on a world whose shape came from an outline."""
+    store = WorldStore(f"outlined_{seed}", root=root)
+    # The outline has to land before anything is committed, since it replaces
+    # the zone plan; begin() takes one directly for exactly this.
+    ledger = asyncio.run(begin(seed, store, outline=synthetic_outline(seed)))
+
+    run = Run(seed=seed, ledger=ledger)
+    run.inventory = {stack["item_id"] for stack in ledger.get("inventory", [])}
+    frontier = {ledger["player_position"]["zone"]}
+    packages: dict[str, dict] = {}
+
+    progressed = True
+    while progressed:
+        progressed = False
+        run.blocked = []
+        for zone_id in sorted(frontier - run.reached):
+            try:
+                packages[zone_id] = asyncio.run(get_or_generate(ledger, zone_id, store))
+            except ZoneRejected as rejected:
+                pytest.fail(f"seed {seed}: {zone_id} was refused\n{rejected.report}")
+            run.reached.add(zone_id)
+            run.inventory |= items_given(packages[zone_id])
+            progressed = True
+        for zone_id in sorted(run.reached):
+            for warp in packages[zone_id].get("warps", []):
+                needed = (warp.get("locked") or {}).get("requires_item")
+                if needed and needed not in run.inventory:
+                    run.blocked.append((zone_id, warp["to_zone"], needed))
+                    continue
+                if warp["to_zone"] not in frontier:
+                    frontier.add(warp["to_zone"])
+                    progressed = True
+    return run
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_an_outlined_world_can_be_finished(seed, tmp_path):
+    run = play_outlined(seed, tmp_path)
+    spine = set(zone_order(run.ledger))
+    assert not spine - run.reached, f"unreachable\n{run.explain()}"
+    assert not run.blocked, f"a door was never opened\n{run.explain()}"
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_every_gate_in_an_outlined_world_opens(seed, tmp_path):
+    run = play_outlined(seed, tmp_path)
+    order = zone_order(run.ledger)
+    assert run.ledger["obligations"], "an outline with no obligation gates nothing"
+    for obligation in run.ledger["obligations"]:
+        assert obligation["status"] in ("placed", "consumed"), run.explain()
+        assert obligation["item_id"] in run.inventory, run.explain()
+        assert order.index(obligation["placed_in"]) < order.index(obligation["required_by"]), \
+            f"{obligation['id']} placed at or past its own door\n{run.explain()}"
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_a_threshold_is_never_gated_twice(seed, tmp_path):
+    """`locked` holds one item, so two keys for one doorway would leave the
+    second opening nothing."""
+    run = play_outlined(seed, tmp_path)
+    gated = [o["required_by"] for o in run.ledger["obligations"]]
+    assert len(gated) == len(set(gated)), f"two obligations share a threshold: {gated}"

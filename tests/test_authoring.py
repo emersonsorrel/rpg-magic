@@ -147,11 +147,12 @@ OUTLINE = {
     "premise": "The mine flooded and the water came back warm.",
     "antagonist": {"name": "The Kindled Deep", "motive": "It is cold and reaching for heat."},
     "beats": [
-        {"id": "b1", "summary": "Arrive in the town.", "zone_hint": "town"},
-        {"id": "b2", "summary": "Descend the workings.", "zone_hint": "mine"},
-        {"id": "b3", "summary": "Open the deep door.", "zone_hint": "deep"},
+        {"id": "b1", "summary": "Arrive in the town.", "zone_hint": "Callow Ford", "kind": "town"},
+        {"id": "b2", "summary": "Descend the workings.", "zone_hint": "upper mine", "kind": "dungeon"},
+        {"id": "b3", "summary": "Open the deep door.", "zone_hint": "the deep door", "kind": "dungeon"},
+        {"id": "b4", "summary": "Meet what waits below.", "zone_hint": "the hearth", "kind": "dungeon"},
     ],
-    "obligations": [{"kind": "key_item", "name": "Ember Sigil", "gates_beat": "b3"}],
+    "obligations": [{"kind": "key_item", "name": "Ember Sigil", "gates_beat": "b4"}],
     "party_seed": [
         {"name": "Wren", "role": "blade", "voice": "clipped"},
         {"name": "Sabel", "role": "spark", "voice": "wry"},
@@ -161,38 +162,39 @@ OUTLINE = {
 
 class TestOutline:
     def test_writes_tone_and_beats(self, ledger):
-        apply_outline(ledger, OUTLINE, list(ledger["zones"]))
+        apply_outline(ledger, OUTLINE)
         assert ledger["outline"]["tone"] == "melancholy pastoral fantasy"
-        assert [b["id"] for b in ledger["outline"]["beats"]] == ["b1", "b2", "b3"]
+        assert [b["id"] for b in ledger["outline"]["beats"]] == ["b1", "b2", "b3", "b4"]
 
     def test_first_beat_is_active_and_the_rest_pending(self, ledger):
-        apply_outline(ledger, OUTLINE, list(ledger["zones"]))
+        apply_outline(ledger, OUTLINE)
         statuses = [b["status"] for b in ledger["outline"]["beats"]]
-        assert statuses == ["active", "pending", "pending"]
+        assert statuses[0] == "active"
+        assert set(statuses[1:]) == {"pending"}
 
     def test_turns_a_named_item_into_a_real_obligation(self, ledger):
+        apply_outline(ledger, OUTLINE)
         order = list(ledger["zones"])
-        apply_outline(ledger, OUTLINE, order)
         obligation = ledger["obligations"][0]
         assert obligation["item_id"] == "ember_sigil"
         assert obligation["status"] == "open"
         assert obligation["placed_in"] is None
-        # b3 is the third beat, so the door is in the third zone.
-        assert obligation["required_by"] == order[2]
+        # b4 is the fourth beat, so the door is into the fourth zone.
+        assert obligation["required_by"] == order[3]
 
     def test_registers_the_item_so_references_resolve(self, ledger):
-        apply_outline(ledger, OUTLINE, list(ledger["zones"]))
+        apply_outline(ledger, OUTLINE)
         assert [i["id"] for i in ledger["defined_items"]] == ["ember_sigil"]
 
     def test_renames_the_party(self, ledger):
-        apply_outline(ledger, OUTLINE, list(ledger["zones"]))
+        apply_outline(ledger, OUTLINE)
         assert [m["name"] for m in ledger["party"]] == ["Wren", "Sabel"]
 
     def test_the_key_is_placed_before_the_door(self, ledger):
         """The whole point of the mechanism: never in or after the zone that
         needs it."""
+        apply_outline(ledger, OUTLINE)
         order = list(ledger["zones"])
-        apply_outline(ledger, OUTLINE, order)
         obligation = ledger["obligations"][0]
         placement = planned_placement(ledger, obligation, order)
         assert order.index(placement) < order.index(obligation["required_by"])
@@ -336,3 +338,66 @@ class TestObligations:
         }
         assert "deep_key" in given, "the placeholder dropped the key item"
         assert validate_zone_package(result.package, world).ok
+
+
+class TestZonePlan:
+    """The outline's beats are the map (design doc 4.2 + 5).
+
+    One beat, one place, in order — which is what makes the outline a spine
+    rather than a backdrop.
+    """
+
+    def test_one_zone_per_beat(self, ledger):
+        apply_outline(ledger, OUTLINE)
+        assert len(ledger["zones"]) == len(OUTLINE["beats"])
+
+    def test_the_first_place_is_always_a_town(self, ledger):
+        """Whatever the model says. The party has to start somewhere they can
+        talk to someone."""
+        outline = copy.deepcopy(OUTLINE)
+        outline["beats"][0]["kind"] = "dungeon"
+        apply_outline(ledger, outline)
+        first = list(ledger["zones"].values())[0]
+        assert first["kind"] == "town"
+
+    def test_the_player_starts_in_the_first_place(self, ledger):
+        apply_outline(ledger, OUTLINE)
+        assert ledger["player_position"]["zone"] == list(ledger["zones"])[0]
+
+    def test_consecutive_dungeons_connect_by_stairs(self, ledger):
+        apply_outline(ledger, OUTLINE)
+        order = list(ledger["zones"])
+        upper, lower = order[1], order[2]
+        assert ledger["zones"][upper]["exits"]["down"] == lower
+        assert ledger["zones"][lower]["exits"]["up"] == upper
+
+    def test_a_settlement_connects_by_road(self, ledger):
+        apply_outline(ledger, OUTLINE)
+        order = list(ledger["zones"])
+        town, mine = order[0], order[1]
+        assert ledger["zones"][town]["exits"]["north"] == mine
+        assert ledger["zones"][mine]["exits"]["south"] == town
+
+    def test_every_exit_has_a_way_back(self, ledger):
+        apply_outline(ledger, OUTLINE)
+        zones = ledger["zones"]
+        for zone_id, zone in zones.items():
+            for target in zone["exits"].values():
+                assert zone_id in zones[target]["exits"].values(), \
+                    f"{target} has no way back to {zone_id}"
+
+    def test_the_plan_survives_its_own_validator(self, ledger):
+        from backend.validation.validator import validate_ledger
+
+        apply_outline(ledger, OUTLINE)
+        report = validate_ledger(ledger)
+        assert report.ok, str(report)
+
+    def test_a_longer_outline_makes_a_longer_game(self, ledger):
+        outline = copy.deepcopy(OUTLINE)
+        outline["beats"].append(
+            {"id": "b5", "summary": "Climb back out changed.", "zone_hint": "the road home", "kind": "town"}
+        )
+        apply_outline(ledger, outline)
+        assert len(ledger["zones"]) == 5
+        assert list(ledger["zones"].values())[-1]["kind"] == "town"
