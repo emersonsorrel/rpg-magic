@@ -33,31 +33,31 @@ def store() -> WorldStore:
 
 
 @app.get("/api/world")
-def get_world():
+async def get_world():
     """The ledger. Created on first request so the client needs no setup step."""
     s = store()
     if not s.exists():
-        return begin(DEFAULT_SEED, s)
+        return await begin(DEFAULT_SEED, s)
     return s.load_ledger()
 
 
 @app.post("/api/new-game")
-def new_game_endpoint(seed: int = DEFAULT_SEED, premise: str | None = None):
+async def new_game_endpoint(seed: int = DEFAULT_SEED, premise: str | None = None):
     """Discards the current world and starts another. Committed zones are
     permanent within a world, not across a deliberate restart."""
     s = store()
     s.reset()
-    return begin(seed, s, premise)
+    return await begin(seed, s, premise)
 
 
 @app.get("/api/zone/{zone_id}")
-def get_zone(zone_id: str):
+async def get_zone(zone_id: str):
     s = store()
     if not s.exists():
-        begin(DEFAULT_SEED, s)
+        await begin(DEFAULT_SEED, s)
     ledger = s.load_ledger()
     try:
-        package = get_or_generate(ledger, zone_id, s)
+        package = await get_or_generate(ledger, zone_id, s)
     except UnknownZone:
         raise HTTPException(status_code=404, detail=f"no zone '{zone_id}' in the ledger")
     except ZoneRejected as rejected:

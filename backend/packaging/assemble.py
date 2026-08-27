@@ -85,32 +85,60 @@ def _placeholder_script(slot: Slot, kind: str) -> list[dict]:
     ]
 
 
-def _entities(layout: Layout, zone_id: str, kind: str) -> list[dict]:
-    slug = _slug(zone_id)
-    counters: dict[str, int] = {}
-    entities = []
+def slot_ids(layout: Layout) -> list[str]:
+    """Stable, human-readable ids for the slots the generator produced.
 
+    This is the only place slots are numbered, so the ids the model is asked to
+    fill and the entities those fills land on can never drift apart.
+    """
+    counters: dict[str, int] = {}
+    ids = []
     for slot in layout.slots:
         counters[slot.kind] = counters.get(slot.kind, 0) + 1
+        ids.append(f"{slot.kind}{counters[slot.kind]:02d}")
+    return ids
+
+
+def _entities(layout: Layout, zone_id: str, kind: str, fills: dict | None = None) -> list[dict]:
+    """One entity per slot. A fill replaces the placeholder's name, look and
+    script -- never its position. The model does not get a vote on where things
+    are (design doc 4.3)."""
+    slug = _slug(zone_id)
+    fills = fills or {}
+    entities = []
+
+    for slot, slot_id in zip(layout.slots, slot_ids(layout)):
         entity_type = {"chest": "chest", "sign": "sign"}.get(slot.kind, "npc")
-        entity_id = f"{entity_type}_{slug}_{slot.kind}{counters[slot.kind]:02d}"
+        entity_id = f"{entity_type}_{slug}_{slot_id}"
+        fill = fills.get(slot_id)
 
         entity = {
             "id": entity_id,
             "type": entity_type,
             "x": slot.x,
             "y": slot.y,
-            "sprite_tags": _biome_tags(slot.kind, layout.tileset),
+            "sprite_tags": _fill_tags(fill, slot.kind, layout.tileset),
             "trigger": "interact",
-            "script": _placeholder_script(slot, kind),
+            "script": (fill or {}).get("script") or _placeholder_script(slot, kind),
         }
         if entity_type != "chest":
-            entity["display_name"] = ROLE_NAMES.get(slot.kind, "Villager")
+            entity["display_name"] = (fill or {}).get("display_name") or ROLE_NAMES.get(slot.kind, "Villager")
         else:
             entity["once"] = True
         entities.append(entity)
 
     return entities
+
+
+def _fill_tags(fill: dict | None, role: str, tileset: str) -> list[str]:
+    chosen = (fill or {}).get("sprite_tags")
+    if not chosen:
+        return _biome_tags(role, tileset)
+    tags = list(dict.fromkeys(chosen))
+    for biome in _tileset_tags(tileset):
+        if biome not in tags:
+            tags.append(biome)
+    return tags[:8]
 
 
 def _biome_tags(role: str, tileset: str) -> list[str]:
@@ -119,7 +147,9 @@ def _biome_tags(role: str, tileset: str) -> list[str]:
     return tags[:8]
 
 
-def _summary(layout: Layout, zone_id: str, kind: str) -> str:
+def _summary(layout: Layout, zone_id: str, kind: str, authored: str | None = None) -> str:
+    if authored:
+        return authored
     counts: dict[str, int] = {}
     for slot in layout.slots:
         counts[slot.kind] = counts.get(slot.kind, 0) + 1
@@ -130,7 +160,9 @@ def _summary(layout: Layout, zone_id: str, kind: str) -> str:
     )
 
 
-def assemble(layout: Layout, zone_id: str, kind: str, *, fulfills: list[str] | None = None) -> dict:
+def assemble(layout: Layout, zone_id: str, kind: str, *, fulfills: list[str] | None = None,
+             fills: dict | None = None, summary: str | None = None,
+             declares_flags: list[str] | None = None, proposals: list[dict] | None = None) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "id": zone_id,
@@ -144,12 +176,12 @@ def assemble(layout: Layout, zone_id: str, kind: str, *, fulfills: list[str] | N
             "decor": list(layout.decor),
             "collision": list(layout.collision),
         },
-        "entities": _entities(layout, zone_id, kind),
+        "entities": _entities(layout, zone_id, kind, fills),
         "warps": list(layout.warps),
         "encounters": _encounter_table(kind, layout.tileset),
         "music_tag": MUSIC.get(kind, "town_calm"),
-        "summary": _summary(layout, zone_id, kind),
-        "declares_flags": [],
+        "summary": _summary(layout, zone_id, kind, summary),
+        "declares_flags": list(declares_flags or []),
         "fulfills_obligations": list(fulfills or []),
-        "proposals": [],
+        "proposals": list(proposals or []),
     }

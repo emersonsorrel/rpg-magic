@@ -1,7 +1,10 @@
+# Runtime
 jsonschema>=4.20
+referencing>=0.35     # cross-file $ref resolution between the shared schemas
 fastapi>=0.115
 uvicorn>=0.30
+pyyaml>=6.0           # llm.yaml, the role -> provider mapping
+httpx2                # the LLM providers' HTTP client
 
-# Tests only. httpx2 is what starlette's TestClient imports.
+# Tests only
 pytest>=8.0
-httpx2

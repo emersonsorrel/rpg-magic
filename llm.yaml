@@ -1,0 +1,37 @@
+# Roles are mapped to providers, not calls to models (design doc 4.1).
+#
+# The outline call happens once and defines the whole game -- worth spending on.
+# Zone authoring happens dozens of times with narrow context, which is the case
+# for local inference; swap it over by uncommenting the local block once an
+# Ollama server is running. Nothing else in the codebase changes.
+#
+# WHY THESE ARE ALL OpenAI MODELS, despite the design doc's "strong model" being
+# provider-agnostic: OpenRouter's `strict` json_schema is only enforced
+# server-side for some upstreams. OpenAI models honour it. Anthropic models
+# accept the request, return HTTP 200, and quietly ignore the schema on anything
+# as nested as the event-command palette -- measured, not assumed. The provider
+# catches that (it validates every response against the schema it asked for), but
+# a model that fails verification every time just burns the repair budget.
+# Using Claude models here needs the tool-calling path instead of
+# response_format; that is a worthwhile change, not a config tweak.
+llm:
+  enabled: true
+
+  outline:
+    provider: openrouter
+    model: openai/gpt-4.1
+    max_tokens: 3000
+
+  zone_author:
+    provider: openrouter
+    model: openai/gpt-4.1-mini
+    max_tokens: 4000
+    # provider: local
+    # model: llama3.1:8b
+
+  # Used for the single repair round-trip, deliberately stronger than the model
+  # whose output failed validation.
+  fallback:
+    provider: openrouter
+    model: openai/gpt-4.1
+    max_tokens: 4000

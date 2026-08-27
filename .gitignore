@@ -6,3 +6,8 @@ node_modules/
 dist/
 .DS_Store
 saves/
+
+# Secrets. Never commit — this repo is public.
+.env
+.env.*
+!.env.example

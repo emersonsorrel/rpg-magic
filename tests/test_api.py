@@ -15,8 +15,15 @@ from backend.validation.validator import validate_ledger, validate_zone_package
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    # Each test gets its own world on disk...
     monkeypatch.setenv("RPG_MAGIC_SAVES", str(tmp_path))
-    return TestClient(app)
+    # ...and none of them may call an LLM. These assert the service's contract,
+    # not the model's prose.
+    monkeypatch.setenv("RPG_MAGIC_NO_LLM", "1")
+    # TestClient starts a non-daemon anyio portal thread on first request. Left
+    # unclosed it outlives the test and hangs interpreter shutdown.
+    with TestClient(app) as started:
+        yield started
 
 
 def test_world_is_created_on_first_request(client):

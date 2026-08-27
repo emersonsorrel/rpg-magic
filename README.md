@@ -4,7 +4,8 @@ A procedurally generated, LLM-authored JRPG. The engine owns structure and truth
 the model authors content inside a schema the engine validates. See
 `docs/design.md` for the full design.
 
-**Status: M2 (Proc-gen + packaging) complete.** No LLM yet, by design.
+**Status: M3 (LLM authoring) complete.** Battles (M4) and obligation
+enforcement end-to-end (M5) are next.
 
 ## Quick start
 
@@ -59,8 +60,19 @@ fixtures/
   ledger_new_game.json         matching ledger
   broken/                      11 deliberately-broken packages + expected.json
 backend/
+  app.py                       FastAPI authoring service; also serves the client
   registries/                  items, encounters, tilesets, tag vocabulary
   validation/                  schema pass + semantic/referential pass + CLI
+  procgen/                     rng, layout, town, dungeon, ascii render
+  packaging/assemble.py        Layout + slots (+ fills) -> Zone Package
+  world/                       ledger store, new game, the commit path
+  llm/
+    provider.py                LLMProvider protocol + the test double
+    openrouter.py, local.py    two implementations, one interface
+    config.py                  role -> provider mapping from llm.yaml
+    schemas.py                 response schemas built from the registries
+    author.py                  outline + zone authoring + the repair ladder
+    prompts/                   outline.md, zone_author.md
   procgen/                     deterministic, LLM-free (rng, layout, town, dungeon)
   packaging/assemble.py        Layout + slots -> Zone Package
   world/                       ledger creation, persistence, the commit path
@@ -180,7 +192,56 @@ Choices the design doc left open or did not cover, resolved here:
   gate does not need it and it is a milestone's worth of work on its own. Doors
   are still collision tiles. This is the one part of M2's brief left undone.
 
-## Next: M3
+## Decisions taken during M3
+
+- **Only OpenAI models are configured, and it is not about quality.** OpenRouter
+  enforces `strict` json_schema server-side for some upstreams and not others.
+  OpenAI models honour it. Anthropic models accept the request, return HTTP 200,
+  and quietly ignore the schema once it is as nested as the event-command
+  palette — measured, not assumed. Reaching those models properly needs the
+  tool-calling path rather than `response_format`; that is a real change, not a
+  config tweak. `llm.yaml` says all of this at the point of use.
+- **A provider verifies its own output.** Because of the above, every response is
+  validated against the schema that was requested before it is returned. A
+  provider that silently stops enforcing a schema raises `LLMError` and drops
+  into the repair ladder instead of poisoning a zone.
+- **The engine normalises its own schema's side effects.** Strict mode requires
+  *every* declared property, so a model with no speaker writes `speaker: ""` and
+  an `IF_FLAG` with nothing to say writes `else: []` — both illegal in the
+  command vocabulary. Left alone this failed validation on essentially every
+  zone and burned the one repair round-trip on punctuation. `normalize_script`
+  fixes it up front; fixing it took the town from `repaired` to `authored` and
+  halved the cost per zone.
+- **The model fills slots; the engine places them.** The authoring response has
+  no coordinates in it at all. It cannot move an NPC even if it wants to.
+- **The engine, not the model, decides where a key item goes.** The outline names
+  what must exist and which beat it gates; `planned_placement` puts it in the
+  zone before the one that needs it. That is the whole Fire Key mechanism, and
+  the model never touches it.
+- **Flags used but not declared are declared automatically.** The alternative is
+  spending the one repair round-trip on bookkeeping. The cost is that a typo
+  becomes a new flag rather than an error, so every auto-declaration is carried
+  on the package where the shell can show it.
+- **Tests never call an LLM.** The default run is offline and free; the live
+  suite (`RPG_MAGIC_LIVE=1 pytest tests/test_live_llm.py`) exists to catch the
+  one thing mocks cannot — a provider quietly ceasing to honour the schema.
+
+Roughly $0.005 for the outline and $0.005–0.008 per zone at the configured
+models, so a full three-zone world costs about two cents.
+
+## What is deliberately missing
+
+Named so it is not mistaken for finished work:
+
+- **Building interiors.** §5 lists "interior warps" and open question 1 wants
+  interiors as separate small packages. Doors are still solid. Shops and inns
+  have authored shopkeepers standing outside doors that do not open.
+- **Shops and inns do not transact.** The slot kinds exist and get authored
+  dialogue; there is no buy/sell UI.
+- **Beats never advance.** `status` is written once at outline time and nothing
+  moves it. M5's territory.
+
+## Next: M4
 
 The outline call, the zone-authoring call, the provider abstraction, the
 validator's repair loop, and the template fallback. The seam is already open:

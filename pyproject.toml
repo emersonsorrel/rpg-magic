@@ -3,8 +3,18 @@ name = "rpg-magic"
 version = "0.0.1"
 description = "Procedurally generated, LLM-authored JRPG engine"
 requires-python = ">=3.11"
-dependencies = ["jsonschema>=4.20", "fastapi>=0.115", "uvicorn>=0.30"]
+dependencies = [
+  "jsonschema>=4.20",
+  "referencing>=0.35",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pyyaml>=6.0",
+  "httpx2",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# The live suite skips itself unless RPG_MAGIC_LIVE is set; this keeps the
+# default run offline and free.
+markers = ["live: makes real, paid LLM calls"]

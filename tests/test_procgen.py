@@ -9,6 +9,7 @@ catching here are the ones a single lucky seed hides.
 
 from __future__ import annotations
 
+import asyncio
 import pathlib
 
 import pytest
@@ -23,6 +24,19 @@ from backend.world.authoring import commit, get_or_generate
 from backend.world.store import WorldStore
 
 SEEDS = [0, 1, 7, 42, 8471029, 123456789, 2**31 - 1]
+
+
+@pytest.fixture(autouse=True)
+def offline(monkeypatch):
+    """These are property tests over the *generator*, run across seven seeds and
+    three zones each. Authoring has no business running here: it would be slow,
+    paid, and it would make the assertions depend on prose."""
+    monkeypatch.setenv("RPG_MAGIC_NO_LLM", "1")
+
+
+def arun(coro):
+    """Committing is async now that authoring sits inside it."""
+    return asyncio.run(coro)
 
 KINDS = {"zone_town_01": "town", "zone_mine_b1": "dungeon", "zone_mine_b2": "dungeon"}
 TOWN_EXITS = {"north": "zone_mine_b1"}
@@ -167,7 +181,7 @@ def test_generated_packages_pass_full_validation(seed, tmp_path):
     assert validate_ledger(ledger).ok
 
     for zone_id in ledger["zones"]:
-        package = get_or_generate(ledger, zone_id, store)
+        package = arun(get_or_generate(ledger, zone_id, store))
         report = validate_zone_package(package, ledger)
         assert report.ok, f"seed {seed} / {zone_id}\n{report}"
 
@@ -177,15 +191,15 @@ def test_committed_zones_are_never_rewritten(tmp_path):
     ledger = new_game.create(8471029)
     store = WorldStore("test", root=tmp_path)
     store.save_ledger(ledger)
-    commit(ledger, "zone_town_01", store)
+    arun(commit(ledger, "zone_town_01", store))
     with pytest.raises(FileExistsError):
-        commit(ledger, "zone_town_01", store)
+        arun(commit(ledger, "zone_town_01", store))
 
 
 def test_regenerating_a_committed_zone_returns_the_stored_bytes(tmp_path):
     ledger = new_game.create(8471029)
     store = WorldStore("test", root=tmp_path)
     store.save_ledger(ledger)
-    first = get_or_generate(ledger, "zone_town_01", store)
-    second = get_or_generate(ledger, "zone_town_01", store)
+    first = arun(get_or_generate(ledger, "zone_town_01", store))
+    second = arun(get_or_generate(ledger, "zone_town_01", store))
     assert first == second

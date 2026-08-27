@@ -132,6 +132,10 @@
             "maxItems": 32,
             "items": { "$ref": "#/$defs/identifier" }
           },
+          "authored": {
+            "description": "How this zone's content came to be: written by the model, written after a repair round-trip, or the deterministic template fill.",
+            "enum": ["authored", "repaired", "placeholder"]
+          },
           "spawn": {
             "description": "Tile the generator chose as this zone's default arrival point. Written on commit.",
             "type": "array",
