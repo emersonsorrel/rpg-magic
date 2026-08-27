@@ -8,7 +8,7 @@ so generators talk in terms of FLOOR and WALL, never in terms of grass or rock.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .rng import derive
 
@@ -209,3 +209,125 @@ def apply_gate(warp: dict, gates: dict | None) -> dict:
     if gate:
         warp["locked"] = {k: v for k, v in gate.items() if k != "obligation_id"}
     return warp
+
+
+def clear_blocking_slots(layout: "Layout", starts: list[tuple[int, int]], *, keep: set | None = None) -> int:
+    """Move any slot that walls something off.
+
+    Slots become entities, and entities block the tile they stand on. A chest in
+    a one-tile corridor seals everything past it; an NPC on a road seals the way
+    out of town. Neither shows up in a collision-only flood fill, because the
+    collision layer says those tiles are open.
+
+    Finding the culprit needs care: it is rarely next to the thing it blocks. So
+    for anything unreachable, walk the collision-only shortest path to it and
+    move whichever slots are standing on that path. Returns how many moved.
+    """
+    keep = keep or set()
+    origin = next((p for p in starts if layout.walkable(*p)), None)
+    if origin is None:
+        return 0
+    moved = 0
+
+    for _attempt in range(24):
+        occupied = {(slot.x, slot.y) for slot in layout.slots}
+        reach = _fill(layout, origin, occupied)
+
+        def touching(x: int, y: int) -> bool:
+            return (x, y) in reach or any(
+                n in reach for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))
+            )
+
+        stranded = [(w["x"], w["y"]) for w in layout.warps if (w["x"], w["y"]) not in reach]
+        stranded += [(s.x, s.y) for s in layout.slots if not touching(s.x, s.y)]
+        if not stranded:
+            return moved
+
+        culprits: set = set()
+        for target in stranded:
+            for step in _path(layout, origin, target):
+                if step in occupied and step != target:
+                    culprits.add(step)
+        if not culprits:
+            return moved  # blocked by terrain, not by slots: not this pass's problem
+
+        for index, slot in enumerate(layout.slots):
+            if (slot.x, slot.y) not in culprits:
+                continue
+            spot = _open_spot(layout, reach, occupied | keep, near=(slot.x, slot.y))
+            if spot is None:
+                continue
+            occupied.discard((slot.x, slot.y))
+            occupied.add(spot)
+            # Slot is frozen -- swap in a moved copy rather than mutating.
+            layout.slots[index] = replace(slot, x=spot[0], y=spot[1])
+            moved += 1
+            layout.notes.append(f"moved a {slot.kind} slot off a chokepoint to {spot}")
+
+    return moved
+
+
+def _fill(layout: "Layout", origin, blocked: set) -> set:
+    seen = {origin}
+    queue = deque([origin])
+    while queue:
+        x, y = queue.popleft()
+        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if n not in seen and layout.walkable(*n) and n not in blocked:
+                seen.add(n)
+                queue.append(n)
+    return seen
+
+
+def _path(layout: "Layout", origin, target) -> list:
+    """Shortest walkable route ignoring slots -- whatever sits on it is what is
+    doing the blocking."""
+    if not layout.walkable(*target):
+        return []
+    previous = {origin: None}
+    queue = deque([origin])
+    while queue:
+        current = queue.popleft()
+        if current == target:
+            break
+        x, y = current
+        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if n not in previous and layout.walkable(*n):
+                previous[n] = current
+                queue.append(n)
+    if target not in previous:
+        return []
+    route, step = [], target
+    while step is not None:
+        route.append(step)
+        step = previous[step]
+    return route
+
+
+def _open_spot(layout: "Layout", reachable: set, taken: set, near=None) -> tuple[int, int] | None:
+    """A reachable tile with room around it, as close to `near` as possible.
+
+    Room to spare means re-placing cannot create the blockage it just fixed.
+    Staying close means a villager moved off a doorway is still outside that
+    house, rather than exiled to the far treeline.
+    """
+    def distance(spot):
+        return abs(spot[0] - near[0]) + abs(spot[1] - near[1]) if near else 0
+
+    roomy, adequate = [], []
+    for x, y in reachable:
+        if (x, y) in taken:
+            continue
+        room = sum(
+            1 for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))
+            if layout.walkable(*n) and n not in taken
+        )
+        if room >= 3:
+            roomy.append((x, y))
+        elif room >= 2:
+            adequate.append((x, y))
+
+    for candidates in (roomy, adequate):
+        if candidates:
+            return min(sorted(candidates), key=distance)
+    return None

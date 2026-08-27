@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from .layout import (
     BLOCKER, DETAIL, DOOR, EDGES, EMPTY, FEATURE, FLOOR, PATH, ROOF, WALL,
-    Layout, Slot, apply_gate, arrival, gateway, zone_size,
+    Layout, Slot, apply_gate, arrival, clear_blocking_slots, gateway, zone_size,
 )
 from .interior import SIZES as INTERIOR_SIZES
 from .rng import zone_rng
@@ -40,6 +40,7 @@ def generate(world_seed: int, zone_id: str, exits: dict[str, str], zone_kinds: d
     _interiors(layout, zone_id, buildings)
     _warps(layout, world_seed, zone_id, exits, zone_kinds, gates)
     _spawn(layout, roads)
+    clear_blocking_slots(layout, [layout.spawn], keep=doorsteps(buildings))
 
     return layout
 
@@ -234,22 +235,42 @@ def _plaza(layout: Layout, roads: set, rng) -> None:
 
 # --- slots -----------------------------------------------------------------
 
+def doorsteps(buildings: list[dict]) -> set:
+    """Tiles that must stay clear: every door and the one tile you can stand on
+    to enter it.
+
+    A door sits in a building's wall face, so its only approach is the tile
+    directly in front. Anything blocking that tile — an NPC counts, they block
+    at runtime — makes the building permanently unenterable.
+    """
+    keep: set = set()
+    for building in buildings:
+        keep.add(tuple(building["door"]))
+        keep.add(tuple(building["step_out"]))
+    return keep
+
+
 def _slots(layout: Layout, rng, buildings: list[dict], roads: set) -> None:
     """Proc-gen decides how many and where. Two of the buildings become a shop
     and an inn; the rest get someone standing outside the door."""
-    taken: set = set()
+    taken: set = set(doorsteps(buildings))
 
     # Traders are inside their own buildings now, so everyone on the street is
-    # simply someone who lives here.
+    # simply someone who lives here. They stand *beside* the doorstep, never on
+    # it: an NPC on the one approach tile walls the building shut.
     for building in buildings:
-        x, y = building["step_out"]
-        if not layout.walkable(x, y) or (x, y) in taken:
-            continue
-        taken.add((x, y))
-        layout.slots.append(Slot(
-            kind="npc", x=x, y=y,
-            hint=f"on the street outside the door of the {building.get('role', 'house')}",
-        ))
+        sx, sy = building["step_out"]
+        beside = [(sx + dx, sy + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+        rng.shuffle(beside)
+        for x, y in beside:
+            if not layout.walkable(x, y) or (x, y) in taken:
+                continue
+            taken.add((x, y))
+            layout.slots.append(Slot(
+                kind="npc", x=x, y=y,
+                hint=f"on the street beside the door of the {building.get('role', 'house')}",
+            ))
+            break
 
     cx, cy = layout.meta["crossroads"]
     for _ in range(rng.randint(2, 3)):

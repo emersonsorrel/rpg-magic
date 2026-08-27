@@ -44,6 +44,7 @@ class Code:
     ENTITY_OUT_OF_BOUNDS = "entity_out_of_bounds"
     ENTITY_ON_BLOCKED_TILE = "entity_on_blocked_tile"
     ENTITY_UNREACHABLE = "entity_unreachable"
+    BLOCKED_BY_ENTITY = "blocked_by_entity"
     WARP_OUT_OF_BOUNDS = "warp_out_of_bounds"
     WARP_ON_BLOCKED_TILE = "warp_on_blocked_tile"
     WARP_UNREACHABLE = "warp_unreachable"

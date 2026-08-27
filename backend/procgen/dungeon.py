@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 
 from .layout import (
     BARRIER, DETAIL, EDGES, EMPTY, FLOOR, PATH, STAIRS_DOWN, STAIRS_UP, WALL,
-    WATER, Layout, Slot, apply_gate, arrival, gateway, interior_anchor,
-    interior_arrival, zone_size,
+    WATER, Layout, Slot, apply_gate, arrival, clear_blocking_slots, gateway,
+    interior_anchor, interior_arrival, zone_size,
 )
 from .rng import zone_rng
 
@@ -70,6 +70,8 @@ def generate(world_seed: int, zone_id: str, exits: dict[str, str], zone_kinds: d
     _slots(layout, root, rng, anchors)
     _warps(layout, world_seed, zone_id, exits, zone_kinds, gates)
     _spawn(layout, world_seed, zone_id, exits, anchors)
+    # Slots become blocking entities; make sure none of them seals a corridor.
+    clear_blocking_slots(layout, [layout.spawn, *anchors])
 
     return layout
 

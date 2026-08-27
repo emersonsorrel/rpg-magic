@@ -301,3 +301,86 @@ def test_the_ledger_is_never_saved_half_built(tmp_path, monkeypatch):
         town = snapshot["zones"]["zone_town_01"]
         assert town["committed"], "a saved ledger had an uncommitted starting town"
         assert town.get("interiors"), "a saved ledger had a town whose doors led nowhere"
+
+
+# --- entities as walls -----------------------------------------------------
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_every_door_can_actually_be_walked_to(seed):
+    """The bug this exists for: the generator put a villager on the one approach
+    tile of every door in the town, so no building could ever be entered. The
+    collision layer called those tiles open, because an NPC blocks at runtime."""
+    layout = _town(seed)
+    occupied = {(slot.x, slot.y) for slot in layout.slots}
+
+    for warp in layout.warps:
+        if "_in" not in warp["to_zone"]:
+            continue
+        approaches = [
+            (warp["x"] + dx, warp["y"] + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+        ]
+        walkable = [a for a in approaches if layout.walkable(*a)]
+        free = [a for a in walkable if a not in occupied]
+        assert free, (
+            f"seed {seed}: door at ({warp['x']},{warp['y']}) -> {warp['to_zone']} has "
+            f"no free approach; {walkable} are all occupied by slots"
+        )
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_no_slot_seals_off_another(seed):
+    """A chest in a one-tile corridor walls off everything past it."""
+    for zone_id, exits in (("zone_town_01", TOWN_EXITS), ("zone_mine_b1", MINE_EXITS)):
+        layout = (town if zone_id.startswith("zone_town") else dungeon).generate(
+            seed, zone_id, exits, KINDS
+        )
+        occupied = {(slot.x, slot.y) for slot in layout.slots}
+        starts = [layout.spawn] + [(w["x"], w["y"]) for w in layout.warps]
+
+        seen: set = set()
+        stack = [p for p in starts if layout.walkable(*p) and p not in occupied]
+        seen.update(stack)
+        while stack:
+            x, y = stack.pop()
+            for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if n not in seen and layout.walkable(*n) and n not in occupied:
+                    seen.add(n)
+                    stack.append(n)
+
+        for slot in layout.slots:
+            neighbours = [(slot.x + dx, slot.y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+            assert (slot.x, slot.y) in seen or any(n in seen for n in neighbours), (
+                f"seed {seed}/{zone_id}: {slot.kind} at ({slot.x},{slot.y}) is sealed off"
+            )
+
+
+def test_the_validator_catches_a_blocked_door():
+    """Teeth check. Put an NPC back on a doorstep and the validator must refuse
+    the zone -- the reachability pass that ignores entity blocking never would."""
+    from backend.validation.validator import validate_zone_package
+
+    ledger = new_game.create(8471029)
+    layout = town.generate(8471029, "zone_town_01", TOWN_EXITS, KINDS)
+    door = next(w for w in layout.warps if "_in" in w["to_zone"])
+    ledger["zones"]["zone_town_01"]["interiors"] = [w["to_zone"] for w in layout.warps if "_in" in w["to_zone"]]
+    for interior in ledger["zones"]["zone_town_01"]["interiors"]:
+        ledger["zones"][interior] = {
+            "id": interior, "kind": "interior", "committed": False,
+            "exits": {"out": "zone_town_01"}, "role": "house", "return_to": [1, 1],
+        }
+
+    package = assemble(layout, "zone_town_01", "town")
+    approach = next(
+        (door["x"] + dx, door["y"] + dy)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+        if layout.walkable(door["x"] + dx, door["y"] + dy)
+    )
+    package["entities"].append({
+        "id": "npc_doorblocker", "type": "npc", "x": approach[0], "y": approach[1],
+        "display_name": "In The Way", "trigger": "interact",
+        "script": [{"op": "SHOW_TEXT", "speaker": "In The Way", "text": "You shall not pass."}],
+    })
+
+    report = validate_zone_package(package, ledger)
+    assert not report.ok
+    assert "blocked_by_entity" in report.error_codes(), report

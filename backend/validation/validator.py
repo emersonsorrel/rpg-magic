@@ -369,6 +369,102 @@ def _check_placement(pkg: dict, ledger: dict, reg: Registries, collision, report
                         f"'{entity.get('id')}' at ({x},{y}) is walled off from every entry point.",
                     )
 
+            _check_entities_do_not_wall_things_off(
+                pkg, ledger, collision, width, height, starts, report
+            )
+
+
+def _check_entities_do_not_wall_things_off(pkg, ledger, collision, width, height, starts, report):
+    """Reachability again, but with entities treated as the walls they are.
+
+    The pass above deliberately ignores entity blocking, on the grounds that an
+    entity stands on open ground and only blocks at runtime. That reasoning is
+    fine for reaching an entity -- you stand next to it -- and wrong for
+    everything behind it. A single NPC parked on a doorstep makes a building
+    permanently unenterable, and the earlier check called it walkable.
+
+    Found the hard way: a town generator placed a villager on the one approach
+    tile of all seven of its doors, and nothing noticed.
+    """
+    entities = pkg.get("entities") or []
+    zone = (ledger.get("zones") or {}).get(pkg.get("id")) or {}
+    interiors = set(zone.get("interiors") or [])
+
+    # Where the player can actually arrive from elsewhere. A building's own
+    # front door does not count: you cannot rely on coming out of a shop to
+    # reach the shop. Seeding the fill from every warp made each one trivially
+    # reachable from itself, which is how a blocked door slipped through.
+    arrivals = [
+        (w["x"], w["y"]) for w in (pkg.get("warps") or [])
+        if isinstance(w, dict) and w.get("to_zone") not in interiors
+    ]
+    position = ledger.get("player_position") or {}
+    if position.get("zone") == pkg.get("id"):
+        arrivals.append((position["x"], position["y"]))
+    origins = arrivals[:1] or list(starts)[:1]
+
+    blocking = {
+        (e["x"], e["y"])
+        for e in entities
+        if isinstance(e, dict) and isinstance(e.get("x"), int) and isinstance(e.get("y"), int)
+        and (e.get("blocking") if e.get("blocking") is not None else e.get("type") != "trigger")
+    }
+
+    def open_tile(x: int, y: int) -> bool:
+        if not (0 <= x < width and 0 <= y < height):
+            return False
+        return not collision[y * width + x] and (x, y) not in blocking
+
+    seen: set[tuple[int, int]] = set()
+    queue = deque()
+    for start in origins:
+        if open_tile(*start):
+            seen.add(start)
+            queue.append(start)
+    while queue:
+        x, y = queue.popleft()
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if (nx, ny) not in seen and open_tile(nx, ny):
+                seen.add((nx, ny))
+                queue.append((nx, ny))
+
+    for i, warp in enumerate(pkg.get("warps") or []):
+        if not isinstance(warp, dict):
+            continue
+        x, y = warp.get("x"), warp.get("y")
+        if not isinstance(x, int) or not isinstance(y, int):
+            continue
+        if (x, y) in seen or (x, y) in origins:
+            continue
+        culprits = sorted(
+            e["id"] for e in entities
+            if isinstance(e, dict) and (e.get("x"), e.get("y")) in blocking
+            and abs(e["x"] - x) + abs(e["y"] - y) == 1
+        )
+        report.error(
+            Code.BLOCKED_BY_ENTITY,
+            f"$.warps[{i}]",
+            f"the way to '{warp.get('to_zone')}' at ({x},{y}) cannot be walked to: "
+            + (f"{', '.join(culprits)} stand on its only approach." if culprits
+               else "every approach is occupied or walled."),
+        )
+
+    for i, entity in enumerate(entities):
+        if not isinstance(entity, dict):
+            continue
+        x, y = entity.get("x"), entity.get("y")
+        if not isinstance(x, int) or not isinstance(y, int):
+            continue
+        neighbours = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+        if (x, y) in seen or any(n in seen for n in neighbours):
+            continue
+        report.error(
+            Code.BLOCKED_BY_ENTITY,
+            f"$.entities[{i}]",
+            f"'{entity.get('id')}' at ({x},{y}) cannot be stood next to, so it can "
+            f"never be interacted with.",
+        )
+
 
 # --------------------------------------------------------------------------
 # obligations -- the Fire Key check
