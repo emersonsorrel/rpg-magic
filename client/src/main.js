@@ -15,6 +15,7 @@ import { BootScene } from "./game/scenes/BootScene.js";
 import { OverworldScene } from "./game/scenes/OverworldScene.js";
 import { UIScene } from "./game/scenes/UIScene.js";
 import { WorldState } from "./game/WorldState.js";
+import { ZoneCache } from "./game/ZoneCache.js";
 import { mountShell } from "./shell/DebugPanel.js";
 import { bus, Events } from "./game/GameBus.js";
 
@@ -41,9 +42,25 @@ async function boot() {
   }
 
   const world = new WorldState(ledger);
+
+  // Shared across scene restarts, so walking back into a zone is instant and a
+  // prefetch started before a transition is still useful after it.
+  const zoneCache = new ZoneCache({
+    fetchZone: (zoneId) => api.getZone(zoneId),
+    maxPending: 2,
+    onEvent: (event) => {
+      if (event.kind === "prefetched") {
+        bus.emit(Events.LOG, `prefetched ${event.zoneId} (${event.ms}ms)`);
+      } else {
+        bus.emit(Events.LOG, `prefetch of ${event.zoneId} failed: ${event.message}`);
+      }
+    },
+  });
+  zoneCache.put(zone);
   mountShell(document.getElementById("shell"), world, {
     api,
     seed: ledger.seed,
+    zoneCache,
     onNewWorld: async (seed) => {
       await api.newGame(seed);
       window.location.reload();
@@ -69,12 +86,13 @@ async function boot() {
         g.registry.set("world", world);
         g.registry.set("seed", ledger.seed);
         g.registry.set("registries", registries);
+        g.registry.set("zoneCache", zoneCache);
       },
     },
   });
 
   // Debug handle for the console and for automated checks.
-  window.__rpg = { game, world, zone, ledger, api };
+  window.__rpg = { game, world, zone, ledger, api, zoneCache };
 }
 
 boot();

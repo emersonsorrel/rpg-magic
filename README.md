@@ -358,14 +358,38 @@ this. It is checked in and runs in about two seconds.
   door it opens fails 28 of its 29 assertions. A softlock test that cannot fail
   is worse than none, because it reads like proof.
 
+## Prefetching (open question 3, resolved)
+
+Open question 3 set the bar: "if local zone-authoring exceeds ~4 seconds,
+prefetching becomes mandatory rather than an optimization." Authoring against a
+hosted model takes roughly twenty, so it was mandatory.
+
+`client/src/game/ZoneCache.js` warms neighbouring zones while the player stands
+still. Measured on a cold world: walking into the mine went from a twenty-second
+wait to a sub-second transition, most of which is the fade.
+
+The policy is the interesting part, because a careless one speculatively authors
+seven building interiors nobody enters and bills you for all of them:
+
+- **Idle-gated.** A player crossing a town has not chosen a door yet, so nothing
+  is speculated until they have been still for two seconds.
+- **The spine before front doors.** A town has one road out and seven front
+  doors; the road is far likelier.
+- **Paid work is rationed, free work is not.** Warming an already-committed zone
+  is one cheap round trip, so it is unrestricted. Building an uncommitted one
+  costs a model call, so at most two are ever built ahead — a running total, not
+  a per-tick allowance.
+- **In-flight requests are shared.** Walking into a zone the prefetcher is
+  already building waits for that build instead of starting a second one.
+- **A failed prefetch is a non-event.** The player may never go there; if they
+  do, the ordinary load surfaces the error properly.
+- **There is an off switch** in the shell, because this spends money in the
+  background.
+
 ## Beyond M5
 
-The five milestones are done. What the design doc leaves open, roughly in the
-order it would pay off:
+What the design doc leaves open, roughly in the order it would pay off:
 
-- **Prefetch adjacent zones** (design doc 6, open question 3). Authoring a zone
-  takes several seconds and currently happens while the player waits on a
-  transition screen.
 - **Shops and inns that transact.** The rooms, the counters and the shopkeepers
   all exist.
 - **Beats that advance.** `status` is written once at outline time and nothing

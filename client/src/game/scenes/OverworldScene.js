@@ -7,9 +7,13 @@ import { bus, Events } from "../GameBus.js";
 import { resolveSprite } from "../assetPack.js";
 import { Battle, buildEncounter } from "../battle/engine.js";
 import { hashSeed, makeRng } from "../battle/rng.js";
+import { neighboursOf } from "../ZoneCache.js";
 import { TILE, tilesetKey } from "../textures.js";
 
 const STEP_MS = 130;
+// How long the player has to stand still before we start speculating on
+// neighbours. Long enough that crossing a room does not trigger it.
+const IDLE_BEFORE_PREFETCH = 2000;
 const FRAME_FOR = { down: 0, left: 1, right: 2, up: 3 };
 const DELTA = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] };
 
@@ -51,6 +55,10 @@ export class OverworldScene extends Phaser.Scene {
 
     this.world.declareFlags(this.pkg.declares_flags);
     this.registries = this.registry.get("registries") ?? { encounters: {}, templates: {}, skills: {}, items: {} };
+    this.cache = this.registry.get("zoneCache") ?? null;
+    this.cache?.put(this.pkg);
+    this.idleSince = 0;
+    this.prefetchArmed = false;
     this.battleCount = 0;
     this._armEncounters();
     this.buildMap();
@@ -74,6 +82,7 @@ export class OverworldScene extends Phaser.Scene {
       }
       const direction = KEY_TO_DIR[event.code] ?? KEY_TO_DIR[event.key];
       if (direction) this.queued = direction;
+      this.idleSince = this.time.now;   // any input resets the idle clock
     });
 
     bus.emit(Events.ZONE_LOADED, {
@@ -188,6 +197,28 @@ export class OverworldScene extends Phaser.Scene {
     }
   }
 
+  // --- prefetching -------------------------------------------------------
+
+  /** Design doc 6: warm the neighbours once the player has stopped moving.
+   *  Waiting for idle matters — a player crossing a town has not chosen a door
+   *  yet, and speculating while they walk would build the wrong one. */
+  maybePrefetch() {
+    if (!this.cache || this.prefetchArmed) return;
+    if (!this.idleSince) {
+      this.idleSince = this.time.now;
+      return;
+    }
+    if (this.time.now - this.idleSince < IDLE_BEFORE_PREFETCH) return;
+    this.prefetchArmed = true;
+    this.prefetchNeighbours();
+  }
+
+  prefetchNeighbours() {
+    if (!this.cache) return;
+    this.cache.schedule(neighboursOf(this.pkg, this.world.ledger));
+    this.cache.drain();
+  }
+
   // --- battles -----------------------------------------------------------
 
   /** Arm the encounter counter for this zone. Deterministic from the world
@@ -299,9 +330,15 @@ export class OverworldScene extends Phaser.Scene {
 
     try {
       const started = performance.now();
-      const pkg = await api.getZone(toZone);
+      const warmed = this.cache?.has(toZone) ?? false;
+      const pkg = this.cache ? await this.cache.load(toZone) : await api.getZone(toZone);
       const ms = Math.round(performance.now() - started);
-      bus.emit(Events.LOG, `${toZone} ready in ${ms}ms (${pkg.width}×${pkg.height})`);
+      bus.emit(
+        Events.LOG,
+        warmed
+          ? `${toZone} was already warm (${ms}ms)`
+          : `${toZone} ready in ${ms}ms (${pkg.width}×${pkg.height})`
+      );
 
       this.world.setPosition(toZone, toX, toY);
       api.savePosition(toZone, toX, toY).catch(() => {});
@@ -360,6 +397,8 @@ export class OverworldScene extends Phaser.Scene {
     // A press mid-step is held until the step lands, so tapping a direction
     // repeatedly walks smoothly instead of dropping inputs.
     if (this.moving) return;
+
+    this.maybePrefetch();
 
     const direction = this.readDirection() ?? this.queued;
     this.queued = null;

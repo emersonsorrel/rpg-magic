@@ -8,7 +8,7 @@ import { bus, Events } from "../game/GameBus.js";
 
 const MAX_LOG = 60;
 
-export function mountShell(root, world, { seed, onNewWorld, api } = {}) {
+export function mountShell(root, world, { seed, onNewWorld, api, zoneCache } = {}) {
   root.innerHTML = `
     <h1>rpg-magic <span class="tag">M2</span></h1>
     <p class="zone" id="zone-line">loading…</p>
@@ -20,6 +20,13 @@ export function mountShell(root, world, { seed, onNewWorld, api } = {}) {
       <button id="regen" type="button">New world</button>
     </div>
     <p class="controls">Same seed, same world — regenerating with the seed above rebuilds it tile for tile.</p>
+
+    <h2>Prefetch</h2>
+    <label class="toggle">
+      <input id="prefetch" type="checkbox" checked />
+      <span>Warm neighbouring zones while idle</span>
+    </label>
+    <p class="controls" id="prefetch-stats">Authoring a new zone takes seconds; warming it while you stand still hides that. Speculating on an unbuilt zone costs one model call, so at most two are built ahead.</p>
 
     <h2>Saves</h2>
     <div class="seedbar">
@@ -70,6 +77,23 @@ export function mountShell(root, world, { seed, onNewWorld, api } = {}) {
     } catch (error) {
       log(`could not list saves: ${error.message}`);
     }
+  }
+
+  const prefetchBox = root.querySelector("#prefetch");
+  const prefetchStats = root.querySelector("#prefetch-stats");
+  if (zoneCache) {
+    prefetchBox.checked = zoneCache.enabled;
+    prefetchBox.addEventListener("change", () => {
+      zoneCache.setEnabled(prefetchBox.checked);
+      log(prefetchBox.checked ? "prefetching on" : "prefetching off");
+    });
+    setInterval(() => {
+      const { hits, misses, prefetched } = zoneCache.stats;
+      prefetchStats.textContent =
+        `${prefetched} warmed · ${hits} instant · ${misses} waited for.`;
+    }, 1500);
+  } else {
+    prefetchBox.disabled = true;
   }
 
   root.querySelector("#save-btn").addEventListener("click", async () => {
