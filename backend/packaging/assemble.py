@@ -36,6 +36,8 @@ ROLE_NAMES = {
 
 MUSIC = {"town": "town_calm", "dungeon": "dungeon_damp", "wilderness": "town_calm", "interior": "town_calm"}
 
+ROLE_SPRITES["house"] = ["human", "adult"]
+
 
 def _slug(zone_id: str) -> str:
     return zone_id.replace("zone_", "", 1)

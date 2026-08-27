@@ -2,18 +2,54 @@
   "schema_version": 1,
   "_note": "Tag vocabulary handed to the model at authoring time. Unknown tags are a WARNING, never an error -- design doc 3.4: a missing asset must never block a commit, it degrades to a generic sprite.",
   "sprite": [
-    "human", "beastfolk", "construct", "undead", "beast", "spirit",
-    "child", "adult", "elder",
-    "authority", "smith", "merchant", "guard", "priest", "farmer", "miner", "child_villager",
-    "chest", "wooden", "iron", "signpost", "prop",
-    "biome:temperate", "biome:mine", "biome:coast", "biome:waste"
+    "human",
+    "beastfolk",
+    "construct",
+    "undead",
+    "beast",
+    "spirit",
+    "child",
+    "adult",
+    "elder",
+    "authority",
+    "smith",
+    "merchant",
+    "guard",
+    "priest",
+    "farmer",
+    "miner",
+    "child_villager",
+    "chest",
+    "wooden",
+    "iron",
+    "signpost",
+    "prop",
+    "biome:temperate",
+    "biome:mine",
+    "biome:coast",
+    "biome:waste",
+    "biome:interior"
   ],
   "sfx": [
-    "chest_open", "door_open", "door_locked", "item_get", "text_blip",
-    "stairs", "splash", "menu_move", "menu_select", "battle_start"
+    "chest_open",
+    "door_open",
+    "door_locked",
+    "item_get",
+    "text_blip",
+    "stairs",
+    "splash",
+    "menu_move",
+    "menu_select",
+    "battle_start"
   ],
   "music": [
-    "town_calm", "town_tense", "dungeon_damp", "dungeon_deep",
-    "battle_normal", "battle_boss", "cutscene_sad", "cutscene_hope"
+    "town_calm",
+    "town_tense",
+    "dungeon_damp",
+    "dungeon_deep",
+    "battle_normal",
+    "battle_boss",
+    "cutscene_sad",
+    "cutscene_hope"
   ]
 }

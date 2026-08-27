@@ -67,6 +67,13 @@ def iter_commands(script, path: str, depth: int = 1):
             yield from iter_commands(cmd.get("on_lose"), f"{here}.on_lose", depth + 1)
 
 
+def _reachable_targets(ledger: dict, zone_id: str) -> set[str]:
+    """Zones this one is allowed to warp to: its compass/stairs exits, plus any
+    interior behind one of its doors."""
+    zone = (ledger.get("zones") or {}).get(zone_id, {})
+    return set((zone.get("exits") or {}).values()) | set(zone.get("interiors") or [])
+
+
 def _zone_scripts(pkg: dict):
     """Every top-level script in the package, with the json path that reaches it."""
     for i, entity in enumerate(pkg.get("entities") or []):
@@ -85,9 +92,7 @@ def _check_commands(pkg: dict, ledger: dict, reg: Registries, report: Report) ->
         e["id"] for e in (pkg.get("entities") or []) if isinstance(e, dict) and "id" in e
     }
     zone_id = pkg.get("id")
-    declared_exits = set(
-        ((ledger.get("zones") or {}).get(zone_id, {}).get("exits") or {}).values()
-    )
+    declared_exits = _reachable_targets(ledger, zone_id)
 
     for script, base in _zone_scripts(pkg):
         for cmd, path, depth in iter_commands(script, base):
@@ -290,9 +295,7 @@ def _check_placement(pkg: dict, ledger: dict, reg: Registries, collision, report
                 )
 
     zone_id = pkg.get("id")
-    declared_exits = set(
-        ((ledger.get("zones") or {}).get(zone_id, {}).get("exits") or {}).values()
-    )
+    declared_exits = _reachable_targets(ledger, zone_id)
     known_items = reg.item_ids(ledger)
 
     for i, warp in enumerate(warps):

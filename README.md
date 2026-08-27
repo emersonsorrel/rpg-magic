@@ -4,8 +4,8 @@ A procedurally generated, LLM-authored JRPG. The engine owns structure and truth
 the model authors content inside a schema the engine validates. See
 `docs/design.md` for the full design.
 
-**Status: M3 (LLM authoring) complete.** Battles (M4) and obligation
-enforcement end-to-end (M5) are next.
+**Status: M3 (LLM authoring) complete, plus building interiors.** Battles (M4)
+and obligation enforcement end-to-end (M5) are next.
 
 ## Quick start
 
@@ -233,13 +233,54 @@ models, so a full three-zone world costs about two cents.
 
 Named so it is not mistaken for finished work:
 
-- **Building interiors.** §5 lists "interior warps" and open question 1 wants
-  interiors as separate small packages. Doors are still solid. Shops and inns
-  have authored shopkeepers standing outside doors that do not open.
 - **Shops and inns do not transact.** The slot kinds exist and get authored
-  dialogue; there is no buy/sell UI.
+  dialogue — a shopkeeper stands behind a real counter in a real room — but
+  there is no buy/sell UI.
 - **Beats never advance.** `status` is written once at outline time and nothing
   moves it. M5's territory.
+
+## Decisions taken while building interiors
+
+Open question 1 asked whether a town is one zone or a zone plus interior
+sub-zones, and recommended separate small packages. That is what these are.
+
+- **Interiors are lazily generated like any other zone.** A town commits with a
+  door per building and a stub in the ledger; the room behind it does not exist
+  until somebody opens it. Entering costs one authoring call for a two- or
+  three-slot room.
+- **Interiors are not in `exits`.** `exits` is keyed by direction, and a town has
+  one north road but eight front doors. They live in their own `interiors` list,
+  which also keeps them out of the traversal spine that obligation placement
+  walks — a key item behind a random front door would make "the zone before the
+  door" meaningless.
+- **Committing a zone can extend the zone graph.** Interior stubs are registered
+  before the town package is validated, or its own door warps look like dangling
+  references. The consequence is that anything iterating `ledger["zones"]` while
+  generating must drain a queue rather than iterate the dict — which the property
+  tests now do, and which incidentally gets every interior validated too.
+- **The engine decides the doorstep.** A town knows where its own front steps
+  are; an interior does not. The parent writes `return_to` into the stub, and
+  the interior warps back to it — never onto the door tile, which would bounce
+  the player straight back inside.
+- **Traders moved indoors.** The street slots are all villagers now; the
+  shopkeeper stands in a gap in their own counter, where a customer on the near
+  side is directly facing them.
+- **Furniture is placed, then unblocked.** Tables and counters go down without
+  checking what they seal off, and anything left unreachable from the doorway is
+  opened back up. A chest behind a table is the indoor version of the walled-off
+  chest the M0 validator already refuses.
+
+Two service fixes fell out of this:
+
+- **`begin()` no longer saves the ledger before the starting town commits.** A
+  second request arriving mid-generation was loading a world whose town was
+  uncommitted and whose doors led nowhere. A single writer lock now serialises
+  generation, which a client prefetching neighbours would have hit anyway.
+- **The client asks for its validator by content.** The generated validator is
+  build output, and a browser holding a stale copy rejects perfectly valid
+  documents while blaming the backend. `/api/schema-version` reports the
+  fingerprint of the schemas actually being served, and the client imports that
+  exact build; static files are additionally served `no-store`.
 
 ## Next: M4
 

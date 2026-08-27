@@ -82,13 +82,33 @@ def test_new_game_with_a_different_seed_builds_a_different_world(client):
 
 
 def test_every_warp_points_at_a_zone_the_ledger_knows(client):
-    ledger = client.get("/api/world").json()
-    for zone_id in ledger["zones"]:
+    """Committing a town registers an interior per building, so the zone graph
+    grows as it is walked; re-read the ledger rather than trusting a snapshot.
+
+    A warp may target a compass exit or an interior behind a door — a town has
+    one north road but eight front doors, which is why interiors are not in
+    `exits`."""
+    pending = list(client.get("/api/world").json()["zones"])
+    seen: set[str] = set()
+
+    while pending:
+        zone_id = pending.pop(0)
+        if zone_id in seen:
+            continue
+        seen.add(zone_id)
+
         package = client.get(f"/api/zone/{zone_id}").json()
-        declared = set(ledger["zones"][zone_id].get("exits", {}).values())
+        ledger = client.get("/api/world").json()
+        zone = ledger["zones"][zone_id]
+        reachable = set(zone.get("exits", {}).values()) | set(zone.get("interiors", []))
+
         for warp in package["warps"]:
-            assert warp["to_zone"] in ledger["zones"]
-            assert warp["to_zone"] in declared
+            assert warp["to_zone"] in ledger["zones"], f"{zone_id} -> unknown {warp['to_zone']}"
+            assert warp["to_zone"] in reachable, f"{zone_id} -> undeclared {warp['to_zone']}"
+
+        pending.extend(z for z in ledger["zones"] if z not in seen)
+
+    assert any(client.get("/api/world").json()["zones"][z]["kind"] == "interior" for z in seen)
 
 
 def test_walking_through_every_warp_lands_on_open_ground(client):

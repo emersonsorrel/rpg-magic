@@ -117,12 +117,66 @@ def test_every_slot_and_warp_is_reachable_from_spawn(seed, build):
 
 @pytest.mark.parametrize("seed", SEEDS)
 def test_town_supplies_the_slots_a_town_needs(seed):
+    """Traders moved indoors when interiors landed, so the street holds
+    villagers and the shop/inn slots live behind their own doors."""
     kinds = [s.kind for s in _town(seed).slots]
-    assert kinds.count("shop") == 1
-    assert kinds.count("inn") == 1
     assert kinds.count("npc") >= 2
     assert kinds.count("chest") >= 1
     assert kinds.count("sign") >= 1
+    assert "shop" not in kinds and "inn" not in kinds
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_every_town_has_exactly_one_shop_and_one_inn_behind_its_doors(seed):
+    roles = [spec["role"] for spec in _town(seed).meta.get("interiors", [])]
+    assert roles.count("shop") == 1
+    assert roles.count("inn") == 1
+    assert len(roles) >= 3
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_every_door_leads_somewhere_and_leads_back(seed):
+    """The door warp and the interior's own exit have to agree without either
+    generator having run the other."""
+    from backend.procgen.interior import SIZES, generate as generate_interior
+
+    layout = _town(seed)
+    specs = {spec["id"]: spec for spec in layout.meta.get("interiors", [])}
+    assert specs, "a town with no interiors has no doors"
+
+    door_warps = [w for w in layout.warps if w["to_zone"] in specs]
+    assert len(door_warps) == len(specs)
+
+    for warp in door_warps:
+        spec = specs[warp["to_zone"]]
+        inside = generate_interior(
+            seed, warp["to_zone"], {"out": "zone_town_01"}, KINDS,
+            role=spec["role"], return_to=tuple(spec["return_to"]),
+        )
+        # Out: the town said where to land, and it is where the room starts.
+        assert (warp["to_x"], warp["to_y"]) == inside.spawn
+        assert inside.walkable(*inside.spawn)
+        # Back: the interior returns the player to the doorstep, not the door.
+        back = inside.warps[0]
+        assert back["to_zone"] == "zone_town_01"
+        assert (back["to_x"], back["to_y"]) == tuple(spec["return_to"])
+        assert layout.walkable(back["to_x"], back["to_y"])
+        assert (back["to_x"], back["to_y"]) != (warp["x"], warp["y"]), \
+            "landing on the door would bounce the player straight back inside"
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_interiors_are_walkable_and_nothing_is_furnished_shut(seed):
+    from backend.procgen.interior import generate as generate_interior
+
+    for role in ("shop", "inn", "house"):
+        inside = generate_interior(seed, f"zone_town_01_in01", {"out": "zone_town_01"}, KINDS,
+                                   role=role, return_to=(5, 5))
+        reachable = inside.reachable_from(inside.spawn)
+        for slot in inside.slots:
+            assert (slot.x, slot.y) in reachable, f"{role}: {slot.kind} is furnished shut"
+        for warp in inside.warps:
+            assert (warp["x"], warp["y"]) in reachable, f"{role}: no way back out"
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -180,10 +234,24 @@ def test_generated_packages_pass_full_validation(seed, tmp_path):
     store.save_ledger(ledger)
     assert validate_ledger(ledger).ok
 
-    for zone_id in ledger["zones"]:
+    # Committing a town registers an interior stub per building, so the zone
+    # graph grows while it is being walked. Drain a queue rather than iterating
+    # the dict — which also means every lazily-discovered interior gets checked.
+    pending = list(ledger["zones"])
+    seen: set[str] = set()
+    while pending:
+        zone_id = pending.pop(0)
+        if zone_id in seen:
+            continue
+        seen.add(zone_id)
         package = arun(get_or_generate(ledger, zone_id, store))
         report = validate_zone_package(package, ledger)
         assert report.ok, f"seed {seed} / {zone_id}\n{report}"
+        pending.extend(z for z in ledger["zones"] if z not in seen)
+
+    assert validate_ledger(ledger).ok, "the ledger must survive its own growth"
+    kinds = {z["kind"] for z in ledger["zones"].values()}
+    assert "interior" in kinds, "a town with no interiors means no doors were wired"
 
 
 def test_committed_zones_are_never_rewritten(tmp_path):
@@ -203,3 +271,33 @@ def test_regenerating_a_committed_zone_returns_the_stored_bytes(tmp_path):
     first = arun(get_or_generate(ledger, "zone_town_01", store))
     second = arun(get_or_generate(ledger, "zone_town_01", store))
     assert first == second
+
+
+def test_the_ledger_is_never_saved_half_built(tmp_path, monkeypatch):
+    """A second request arriving mid-generation loads whatever is on disk.
+
+    If `begin` writes the ledger before the starting town commits, that reader
+    gets a world with an uncommitted town and no interiors registered — which
+    is exactly what happened the first time a browser and a health probe hit
+    the service together.
+    """
+    import copy
+
+    from backend.world.authoring import begin
+
+    store = WorldStore("half", root=tmp_path)
+    snapshots = []
+    real_save = store.save_ledger
+
+    def spy(ledger):
+        snapshots.append(copy.deepcopy(ledger))
+        real_save(ledger)
+
+    store.save_ledger = spy
+    arun(begin(8471029, store))
+
+    assert snapshots, "begin() never saved a ledger"
+    for snapshot in snapshots:
+        town = snapshot["zones"]["zone_town_01"]
+        assert town["committed"], "a saved ledger had an uncommitted starting town"
+        assert town.get("interiors"), "a saved ledger had a town whose doors led nowhere"

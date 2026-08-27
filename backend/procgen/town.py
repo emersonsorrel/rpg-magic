@@ -13,6 +13,7 @@ from .layout import (
     BLOCKER, DETAIL, DOOR, EDGES, EMPTY, FEATURE, FLOOR, PATH, ROOF, WALL,
     Layout, Slot, arrival, gateway, zone_size,
 )
+from .interior import SIZES as INTERIOR_SIZES
 from .rng import zone_rng
 
 TILESET = "overworld_temperate"
@@ -32,8 +33,10 @@ def generate(world_seed: int, zone_id: str, exits: dict[str, str], zone_kinds: d
     roads = _road_skeleton(layout, rng)
     _gateway_roads(layout, world_seed, zone_id, exits, roads)
     buildings = _buildings(layout, rng, roads)
+    _assign_roles(buildings, rng)
     _plaza(layout, roads, rng)
     _slots(layout, rng, buildings, roads)
+    _interiors(layout, zone_id, buildings)
     _warps(layout, world_seed, zone_id, exits, zone_kinds)
     _spawn(layout, roads)
 
@@ -162,7 +165,8 @@ def _buildings(layout: Layout, rng, roads: set) -> list[dict]:
             layout.set_decor(x, y, WALL)
 
         door = face[len(face) // 2]
-        layout.set_decor(*door, DOOR)
+        # Walkable: stepping into the doorway is what triggers the interior warp.
+        layout.set_decor(*door, DOOR, blocks=False)
         step_out = (door[0] + dx, door[1] + dy)
         if step_out not in roads:
             continue
@@ -171,6 +175,43 @@ def _buildings(layout: Layout, rng, roads: set) -> list[dict]:
         placed.append({"rect": (bx, by, bw, bh), "door": door, "step_out": step_out, "facing": facing})
 
     return placed
+
+
+def _assign_roles(buildings: list[dict], rng) -> None:
+    """Every town gets one shop and one inn; the rest are houses. Decided here
+    rather than in the slot pass, because the interior behind a door has to
+    agree with what the door is."""
+    order = list(range(len(buildings)))
+    rng.shuffle(order)
+    roles = ["shop", "inn"] + ["house"] * max(0, len(buildings) - 2)
+    for role, index in zip(roles, order):
+        buildings[index]["role"] = role
+
+
+def _interiors(layout: Layout, zone_id: str, buildings: list[dict]) -> None:
+    """One interior zone per building, warped to from its doorway.
+
+    The interior does not exist yet and will not until somebody opens the door,
+    so its entry tile is derived rather than looked up — the same trick the
+    compass gateways use, for the same reason.
+    """
+    slug = zone_id.replace("zone_", "", 1)
+    for index, building in enumerate(buildings, start=1):
+        role = building.get("role", "house")
+        interior_id = f"zone_{slug}_in{index:02d}"
+        width, height = INTERIOR_SIZES.get(role, INTERIOR_SIZES["house"])
+        door_x, door_y = building["door"]
+
+        layout.warps.append({
+            "x": door_x, "y": door_y,
+            "to_zone": interior_id,
+            "to_x": width // 2, "to_y": height - 2,
+        })
+        layout.meta.setdefault("interiors", []).append({
+            "id": interior_id,
+            "role": role,
+            "return_to": list(building["step_out"]),
+        })
 
 
 def _plaza(layout: Layout, roads: set, rng) -> None:
@@ -197,19 +238,17 @@ def _slots(layout: Layout, rng, buildings: list[dict], roads: set) -> None:
     and an inn; the rest get someone standing outside the door."""
     taken: set = set()
 
-    order = list(range(len(buildings)))
-    rng.shuffle(order)
-    roles = ["shop", "inn"] + ["npc"] * max(0, len(buildings) - 2)
-
-    for role, index in zip(roles, order):
-        building = buildings[index]
+    # Traders are inside their own buildings now, so everyone on the street is
+    # simply someone who lives here.
+    for building in buildings:
         x, y = building["step_out"]
         if not layout.walkable(x, y) or (x, y) in taken:
             continue
         taken.add((x, y))
-        layout.slots.append(
-            Slot(kind=role, x=x, y=y, hint=f"outside the door of a building facing {building['facing']}")
-        )
+        layout.slots.append(Slot(
+            kind="npc", x=x, y=y,
+            hint=f"on the street outside the door of the {building.get('role', 'house')}",
+        ))
 
     cx, cy = layout.meta["crossroads"]
     for _ in range(rng.randint(2, 3)):

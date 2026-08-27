@@ -7,7 +7,7 @@
  * renders nothing it has not validated.
  */
 
-import { gateLedger, gateZonePackage } from "./game/zoneLoader.js";
+import { gateLedger, gateZonePackage, loadValidators } from "./game/zoneLoader.js";
 
 const BASE = "/api";
 
@@ -28,6 +28,14 @@ async function request(path, options) {
     throw new Error(`${path}: ${response.status} ${body?.detail ?? response.statusText}`);
   }
   return body;
+}
+
+/** Load the validator build matching the schemas the backend is serving.
+ *  Must run before any gate. */
+export async function ready() {
+  const { schema_hash } = await request("/schema-version");
+  await loadValidators(schema_hash);
+  return schema_hash;
 }
 
 export const getWorld = () => request("/world").then((l) => gateLedger(l, "/api/world"));

@@ -20,6 +20,7 @@ from backend.llm.provider import LLMError, RecordingProvider, coerce_json, verif
 from backend.packaging.assemble import slot_ids
 from backend.procgen.town import generate as generate_town
 from backend.world import new_game
+from backend.world.authoring import register_interiors
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SEED = 8471029
@@ -35,7 +36,11 @@ def ledger():
 def layout(ledger):
     zone = ledger["zones"][ZONE]
     kinds = {z: v["kind"] for z, v in ledger["zones"].items()}
-    return generate_town(SEED, ZONE, zone["exits"], kinds)
+    built = generate_town(SEED, ZONE, zone["exits"], kinds)
+    # commit() registers a stub for every door before the package is validated;
+    # without it the town's own door warps look like dangling references.
+    register_interiors(ledger, ZONE, built)
+    return built
 
 
 def fill_for(layout, **overrides):

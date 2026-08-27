@@ -26,6 +26,7 @@ async function boot() {
   let ledger;
   let zone;
   try {
+    const schemaHash = await api.ready();
     ledger = await api.getWorld();
     zone = await api.getZone(ledger.player_position.zone);
   } catch (error) {

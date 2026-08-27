@@ -8,6 +8,7 @@ from them. This module is the Python side.
 from __future__ import annotations
 
 import functools
+import hashlib
 import json
 import pathlib
 
@@ -67,3 +68,19 @@ def check_schema(doc, name: str, report: Report) -> bool:
     if len(errors) > 25:
         report.error(Code.SCHEMA, "$", f"...and {len(errors) - 25} further schema errors")
     return not errors
+
+
+@functools.lru_cache(maxsize=1)
+def schema_hash() -> str:
+    """Fingerprint of the shared schemas.
+
+    The client's validator is generated from these files and committed, so a
+    browser can end up holding a stale copy of it and rejecting perfectly good
+    documents. Handing the client this hash lets it ask for its own build by
+    content, which a cache cannot get wrong. Must match schemaHash() in
+    client/tools/build-validator.js.
+    """
+    digest = hashlib.sha256()
+    for filename in ("event_command.schema.json", "zone_package.schema.json", "ledger.schema.json"):
+        digest.update((SCHEMA_DIR / filename).read_bytes())
+    return digest.hexdigest()[:16]

@@ -7,7 +7,30 @@
  * exactly width*height long. A torn map is a miserable way to find out.
  */
 
-import { validateLedger, validateZonePackage } from "./generated/validators.js";
+/**
+ * The generated validator is build output, regenerated whenever a schema
+ * changes, and a browser that has cached an older copy rejects documents that
+ * are perfectly valid — reported as a backend failure, which is a thoroughly
+ * misleading place to start looking. So it is loaded by content: the backend
+ * reports the fingerprint of the schemas it is actually serving, and the client
+ * asks for that exact build.
+ */
+let validators = null;
+
+export async function loadValidators(version) {
+  if (validators) return validators;
+  const url = new URL("./generated/validators.js", import.meta.url);
+  if (version) url.search = `v=${version}`;
+  validators = await import(url.href);
+  return validators;
+}
+
+function ready() {
+  if (!validators) {
+    throw new Error("loadValidators() must run before anything is validated");
+  }
+  return validators;
+}
 
 export class ZoneValidationError extends Error {
   constructor(source, errors) {
@@ -22,6 +45,7 @@ export class ZoneValidationError extends Error {
 }
 
 export function gateZonePackage(pkg, source = "zone package") {
+  const { validateZonePackage } = ready();
   if (!validateZonePackage(pkg)) throw new ZoneValidationError(source, validateZonePackage.errors);
 
   const expected = pkg.width * pkg.height;
@@ -36,6 +60,7 @@ export function gateZonePackage(pkg, source = "zone package") {
 }
 
 export function gateLedger(ledger, source = "ledger") {
+  const { validateLedger } = ready();
   if (!validateLedger(ledger)) throw new ZoneValidationError(source, validateLedger.errors);
   return ledger;
 }

@@ -36,6 +36,24 @@ const PALETTES = {
     post: "#4a3524",
     stairs: ["#8d8478", "#5c554d", "#a9a094"],
   },
+  interior_wood: {
+    floor: ["#8a6a45", "#75593a", "#9c7b52"],
+    path: ["#6b5942", "#5a4a36", "#7d6a50"],
+    water: ["#3b5a68", "#2f4a56", "#4d6f7d"],
+    planks: ["#7a5c3a", "#63482c"],
+    dry: ["#c9b489", "#b8a279"],
+    trunk: "#5a3f28",
+    canopy: ["#63482c", "#7a5c3a"],
+    wall: ["#b8a98d", "#9e8f74"],
+    door: "#5a3f28",
+    knob: "#c9a45e",
+    feature: "#7d7468",
+    barrier: "#7a5c3a",
+    roof: ["#5a4a36", "#4a3c2b"],
+    detail: ["#8a7b5c", "#a89878", "#6d6047"],
+    post: "#6d5334",
+    stairs: ["#8d8478", "#5c554d", "#a9a094"],
+  },
   mine_damp: {
     floor: ["#4a4038", "#3c332c", "#574c42"],
     path: ["#5a5048", "#4a4038", "#6b6058"],
@@ -175,6 +193,66 @@ function stairs(ctx, ox, oy, P, direction) {
 
 /** A straight recolour reads wrong for these, so the mine draws its own. */
 const OVERRIDES = {
+  interior_wood: {
+    floor: ["#8a6a45", "#75593a", "#9c7b52"],
+    path: ["#6b5942", "#5a4a36", "#7d6a50"],
+    water: ["#3b5a68", "#2f4a56", "#4d6f7d"],
+    planks: ["#7a5c3a", "#63482c"],
+    dry: ["#c9b489", "#b8a279"],
+    trunk: "#5a3f28",
+    canopy: ["#63482c", "#7a5c3a"],
+    wall: ["#b8a98d", "#9e8f74"],
+    door: "#5a3f28",
+    knob: "#c9a45e",
+    feature: "#7d7468",
+    barrier: "#7a5c3a",
+    roof: ["#5a4a36", "#4a3c2b"],
+    detail: ["#8a7b5c", "#a89878", "#6d6047"],
+    post: "#6d5334",
+    stairs: ["#8d8478", "#5c554d", "#a9a094"],
+  },
+  interior_wood: {
+    16: (ctx, ox, oy, P) => { // cupboard
+      fill(ctx, ox, oy, P.floor[0]);
+      ctx.fillStyle = P.canopy[0];
+      ctx.fillRect(ox + 1, oy, 14, TILE);
+      ctx.fillStyle = P.trunk;
+      ctx.fillRect(ox + 1, oy + 5, 14, 1);
+      ctx.fillRect(ox + 8, oy, 1, TILE);
+      ctx.fillStyle = P.knob;
+      ctx.fillRect(ox + 6, oy + 8, 1, 2);
+      ctx.fillRect(ox + 10, oy + 8, 1, 2);
+    },
+    19: (ctx, ox, oy, P) => { // hearth
+      fill(ctx, ox, oy, P.feature);
+      ctx.fillStyle = "#2b2320";
+      ctx.fillRect(ox + 3, oy + 5, 10, 11);
+      ctx.fillStyle = "#d4652f";
+      ctx.beginPath(); ctx.moveTo(ox + 8, oy + 8); ctx.lineTo(ox + 11, oy + 15);
+      ctx.lineTo(ox + 5, oy + 15); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#f0b44a";
+      ctx.fillRect(ox + 7, oy + 12, 2, 3);
+    },
+    20: (ctx, ox, oy, P) => { // furniture: counters, tables, beds
+      fill(ctx, ox, oy, P.floor[0]);
+      ctx.fillStyle = P.barrier;
+      ctx.fillRect(ox, oy + 3, TILE, 11);
+      ctx.fillStyle = P.planks[1];
+      ctx.fillRect(ox, oy + 3, TILE, 2);
+      ctx.fillRect(ox, oy + 12, TILE, 2);
+    },
+    23: (ctx, ox, oy, P) => { // shelf
+      fill(ctx, ox, oy, P.floor[0]);
+      ctx.fillStyle = P.post;
+      ctx.fillRect(ox, oy + 4, TILE, 2);
+      ctx.fillRect(ox, oy + 11, TILE, 2);
+      for (let i = 0; i < 3; i += 1) {
+        ctx.fillStyle = P.detail[i % P.detail.length];
+        ctx.fillRect(ox + 2 + i * 5, oy + 1, 3, 3);
+        ctx.fillRect(ox + 2 + i * 5, oy + 8, 3, 3);
+      }
+    },
+  },
   mine_damp: {
     16: (ctx, ox, oy, P) => { // rock column
       fill(ctx, ox, oy, P.wall[1]);

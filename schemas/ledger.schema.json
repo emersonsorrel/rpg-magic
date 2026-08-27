@@ -132,6 +132,24 @@
             "maxItems": 32,
             "items": { "$ref": "#/$defs/identifier" }
           },
+          "interiors": {
+            "description": "Interior zones reachable through doors in this one. Kept out of `exits` on purpose: a town has one north road but eight front doors, and interiors are not part of the compass graph that obligation ordering walks.",
+            "type": "array",
+            "maxItems": 16,
+            "items": { "$ref": "#/$defs/identifier" },
+            "uniqueItems": true
+          },
+          "role": {
+            "description": "For an interior: what the building is. The generator uses it to furnish the room; the authoring pass uses it to know who lives there.",
+            "enum": ["shop", "inn", "house"]
+          },
+          "return_to": {
+            "description": "For an interior: the tile in the parent zone the player lands on when leaving. Written by the parent's generator, which is the only thing that knows where its own doorstep is.",
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "integer", "minimum": 0, "maximum": 127 }
+          },
           "authored": {
             "description": "How this zone's content came to be: written by the model, written after a repair round-trip, or the deterministic template fill.",
             "enum": ["authored", "repaired", "placeholder"]
