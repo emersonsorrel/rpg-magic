@@ -66,8 +66,32 @@ def create(seed: int, premise: str | None = None) -> dict:
                 }
             ],
         },
-        "obligations": [],
-        "defined_items": [],
+        # Even with no outline, the world gets one real key item and one real
+        # locked door. Without it an unauthored world has no gate at all, which
+        # would leave the engine's central guarantee — that a run cannot be
+        # softlocked — exercised only when a model happens to be reachable.
+        # apply_outline() replaces both wholesale when the outline call runs.
+        "obligations": [
+            {
+                "id": "obl_deep_key",
+                "kind": "key_item",
+                "name": "Deep Key",
+                "item_id": "deep_key",
+                "gates_beat": "b1",
+                "required_by": "zone_mine_b2",
+                "must_place_before": "zone_mine_b2",
+                "placed_in": None,
+                "status": "open",
+            }
+        ],
+        "defined_items": [
+            {
+                "id": "deep_key",
+                "name": "Deep Key",
+                "kind": "key_item",
+                "description": "Placeholder key. The outline pass names a real one.",
+            }
+        ],
         "zones": zones,
         "flags": {},
         "party": [

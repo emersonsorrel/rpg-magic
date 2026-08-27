@@ -70,9 +70,22 @@ def _tileset_tags(tileset: str) -> list[str]:
     return registry["tilesets"].get(tileset, {}).get("tags", [])
 
 
-def _placeholder_script(slot: Slot, kind: str) -> list[dict]:
+def _placeholder_script(slot: Slot, kind: str, must_place: dict | None = None) -> list[dict]:
     """Clearly-unauthored content. The slot hint is carried into the text so a
-    generated zone is debuggable by walking around in it."""
+    generated zone is debuggable by walking around in it.
+
+    When this slot has been handed a key item, the placeholder still places it.
+    Design doc 4.4: a failed authoring call degrades to a boring zone, never to
+    a broken gate — a template fill that quietly dropped the key would be the
+    broken gate.
+    """
+    if must_place:
+        return [
+            {"op": "PLAY_SFX", "sfx_tag": "chest_open"},
+            {"op": "GIVE_ITEM", "item_id": must_place["item_id"], "qty": 1},
+            {"op": "SHOW_TEXT", "speaker": None,
+             "text": f"[placeholder — the {must_place['name']} was here]"},
+        ]
     if slot.kind == "chest":
         return [
             {"op": "PLAY_SFX", "sfx_tag": "chest_open"},
@@ -101,12 +114,29 @@ def slot_ids(layout: Layout) -> list[str]:
     return ids
 
 
-def _entities(layout: Layout, zone_id: str, kind: str, fills: dict | None = None) -> list[dict]:
+def _assign_key_items(layout: Layout, must_place: list[dict]) -> dict:
+    """Give each required key item a slot, chests first.
+
+    Chests are the natural home; an NPC will hand it over if the zone has none.
+    Either way the item ends up somewhere the player can reach, which is the
+    whole point of the obligation.
+    """
+    if not must_place:
+        return {}
+    ids = slot_ids(layout)
+    ranked = [sid for sid, slot in zip(ids, layout.slots) if slot.kind == "chest"]
+    ranked += [sid for sid, slot in zip(ids, layout.slots) if slot.kind != "chest"]
+    return {sid: item for sid, item in zip(ranked, must_place)}
+
+
+def _entities(layout: Layout, zone_id: str, kind: str, fills: dict | None = None,
+              must_place: list[dict] | None = None) -> list[dict]:
     """One entity per slot. A fill replaces the placeholder's name, look and
     script -- never its position. The model does not get a vote on where things
     are (design doc 4.3)."""
     slug = _slug(zone_id)
     fills = fills or {}
+    assigned = _assign_key_items(layout, must_place or [])
     entities = []
 
     for slot, slot_id in zip(layout.slots, slot_ids(layout)):
@@ -121,7 +151,7 @@ def _entities(layout: Layout, zone_id: str, kind: str, fills: dict | None = None
             "y": slot.y,
             "sprite_tags": _fill_tags(fill, slot.kind, layout.tileset),
             "trigger": "interact",
-            "script": (fill or {}).get("script") or _placeholder_script(slot, kind),
+            "script": (fill or {}).get("script") or _placeholder_script(slot, kind, assigned.get(slot_id)),
         }
         if entity_type != "chest":
             entity["display_name"] = (fill or {}).get("display_name") or ROLE_NAMES.get(slot.kind, "Villager")
@@ -164,7 +194,8 @@ def _summary(layout: Layout, zone_id: str, kind: str, authored: str | None = Non
 
 def assemble(layout: Layout, zone_id: str, kind: str, *, fulfills: list[str] | None = None,
              fills: dict | None = None, summary: str | None = None,
-             declares_flags: list[str] | None = None, proposals: list[dict] | None = None) -> dict:
+             declares_flags: list[str] | None = None, proposals: list[dict] | None = None,
+             must_place: list[dict] | None = None) -> dict:
     return {
         "schema_version": SCHEMA_VERSION,
         "id": zone_id,
@@ -178,7 +209,7 @@ def assemble(layout: Layout, zone_id: str, kind: str, *, fulfills: list[str] | N
             "decor": list(layout.decor),
             "collision": list(layout.collision),
         },
-        "entities": _entities(layout, zone_id, kind, fills),
+        "entities": _entities(layout, zone_id, kind, fills, must_place),
         "warps": list(layout.warps),
         "encounters": _encounter_table(kind, layout.tileset),
         "music_tag": MUSIC.get(kind, "town_calm"),

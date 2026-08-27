@@ -187,3 +187,44 @@ def test_a_zone_package_never_references_an_encounter_that_does_not_exist(client
         for row in package["encounters"]["table"]:
             assert row["encounter_id"] in registries["encounters"]
         pending.extend(z for z in client.get("/api/world").json()["zones"] if z not in seen)
+
+
+def test_a_world_can_be_saved_and_loaded_back(client):
+    """Design doc M5: save/load via ledger serialization. The ledger is the save,
+    but a world is the ledger plus its committed packages."""
+    client.get("/api/world")
+    assert client.post("/api/saves/before the mine").status_code == 200
+
+    party = client.get("/api/world").json()["party"]
+    party[0]["level"] += 5
+    client.post("/api/world/state", json={"party": party})
+    assert client.get("/api/world").json()["party"][0]["level"] == party[0]["level"]
+
+    client.post("/api/saves/before the mine/load")
+    restored = client.get("/api/world").json()["party"][0]["level"]
+    assert restored == party[0]["level"] - 5
+
+
+def test_a_save_keeps_its_committed_zones(client):
+    """Committed is permanent, so a reload must bring back the same zones rather
+    than regenerating them."""
+    town = client.get("/api/zone/zone_town_01").json()
+    client.post("/api/saves/snapshot")
+    client.post("/api/saves/snapshot/load")
+    assert client.get("/api/zone/zone_town_01").json() == town
+
+
+def test_saves_are_listed_with_enough_to_choose_between_them(client):
+    client.get("/api/world")
+    client.post("/api/saves/one")
+    saves = {s["name"]: s for s in client.get("/api/saves").json()["saves"]}
+    assert "one" in saves and "default" in saves
+    assert saves["default"]["active"] is True
+    assert saves["one"]["party"], "a save with no party is not much use to pick between"
+    assert saves["one"]["committed_zones"] >= 1
+
+
+def test_a_save_name_cannot_escape_the_saves_directory(client):
+    client.get("/api/world")
+    for bad in ("../etc", "default", "with/slash", ""):
+        assert client.post(f"/api/saves/{bad}").status_code in (400, 404, 405)

@@ -42,6 +42,7 @@ async function boot() {
 
   const world = new WorldState(ledger);
   mountShell(document.getElementById("shell"), world, {
+    api,
     seed: ledger.seed,
     onNewWorld: async (seed) => {
       await api.newGame(seed);

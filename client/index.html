@@ -73,6 +73,15 @@
       .kv b.on { color: #86e08a; }
       .kv b.off { color: #6a7284; }
       .kv .empty { color: #6a7284; }
+      .saves li { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 3px 0; }
+      .saves li span { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .saves b.dim { color: var(--dim); font-weight: 400; margin-left: 4px; }
+      .saves button {
+        flex: 0 0 auto; background: #223049; color: var(--ink); border: 1px solid var(--line);
+        border-radius: 3px; padding: 2px 8px; font: inherit; font-size: 11px; cursor: pointer;
+      }
+      .saves button:hover { background: #2c3c5c; }
+      .saves .empty { color: #6a7284; }
       .log { font-size: 11px; color: var(--dim); max-height: 260px; overflow-y: auto; }
       .log li { padding: 2px 0; border-bottom: 1px solid #1c2330; word-break: break-word; }
       .fatal { color: #ff9d9d; font-size: 13px; max-width: 640px; }

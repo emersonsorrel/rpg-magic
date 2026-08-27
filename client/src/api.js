@@ -55,6 +55,14 @@ export const saveState = (state) =>
     body: JSON.stringify(state),
   });
 
+export const listSaves = () => request("/saves").then((r) => r.saves);
+
+export const saveSlot = (name) =>
+  request(`/saves/${encodeURIComponent(name)}`, { method: "POST" });
+
+export const loadSlot = (name) =>
+  request(`/saves/${encodeURIComponent(name)}/load`, { method: "POST" });
+
 export const newGame = (seed) =>
   request(`/new-game?seed=${encodeURIComponent(seed)}`, { method: "POST" }).then((l) =>
     gateLedger(l, "/api/new-game")

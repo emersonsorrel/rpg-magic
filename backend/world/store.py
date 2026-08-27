@@ -65,3 +65,56 @@ class WorldStore:
 
         if self.dir.exists():
             shutil.rmtree(self.dir)
+
+
+# --- named saves -----------------------------------------------------------
+#
+# The ledger is the save file (design doc 3.1), but a world is the ledger *plus*
+# its committed packages: committed is permanent, so reloading a save has to
+# bring back the exact zones that world had, not regenerate them.
+
+ACTIVE_SLOT = "default"
+
+
+def list_slots(root: pathlib.Path | None = None) -> list[dict]:
+    base = root or saves_root()
+    if not base.exists():
+        return []
+    slots = []
+    for entry in sorted(base.iterdir()):
+        ledger_path = entry / "ledger.json"
+        if not entry.is_dir() or not ledger_path.exists():
+            continue
+        try:
+            ledger = json.loads(ledger_path.read_text())
+        except json.JSONDecodeError:
+            continue
+        slots.append({
+            "name": entry.name,
+            "active": entry.name == ACTIVE_SLOT,
+            "seed": ledger.get("seed"),
+            "premise": (ledger.get("premise") or "")[:160],
+            "zone": ledger.get("player_position", {}).get("zone"),
+            "party": [
+                {"name": m.get("name"), "level": m.get("level")}
+                for m in ledger.get("party", [])
+            ],
+            "committed_zones": sum(
+                1 for z in ledger.get("zones", {}).values() if z.get("committed")
+            ),
+            "updated": ledger_path.stat().st_mtime,
+        })
+    return slots
+
+
+def copy_slot(source: str, target: str, root: pathlib.Path | None = None) -> None:
+    """Duplicate a whole world -- ledger and every committed package."""
+    import shutil
+
+    base = root or saves_root()
+    src, dst = base / source, base / target
+    if not (src / "ledger.json").exists():
+        raise FileNotFoundError(f"no save named '{source}'")
+    if dst.exists():
+        shutil.rmtree(dst)
+    shutil.copytree(src, dst)

@@ -326,12 +326,15 @@ def _check_placement(pkg: dict, ledger: dict, reg: Registries, collision, report
 
         locked = warp.get("locked") or {}
         requires = locked.get("requires_item")
-        if isinstance(requires, str) and requires not in known_items:
-            report.error(
-                Code.UNKNOWN_ITEM,
-                f"{path}.locked.requires_item",
-                f"gate requires '{requires}', which is not a known item.",
-            )
+        if isinstance(requires, str):
+            if requires not in known_items:
+                report.error(
+                    Code.UNKNOWN_ITEM,
+                    f"{path}.locked.requires_item",
+                    f"gate requires '{requires}', which is not a known item.",
+                )
+            else:
+                _check_gate_order(ledger, warp, requires, path, report)
 
     # Reachability: a zone whose chest is walled off is a softlock waiting to happen.
     if collision and isinstance(width, int) and isinstance(height, int):
@@ -370,6 +373,38 @@ def _check_placement(pkg: dict, ledger: dict, reg: Registries, collision, report
 # --------------------------------------------------------------------------
 # obligations -- the Fire Key check
 # --------------------------------------------------------------------------
+
+def _check_gate_order(ledger: dict, warp: dict, requires: str, path: str, report: Report) -> None:
+    """The Fire Key rule, enforced at the door rather than at the key.
+
+    Design doc 4.4: the validator "refuses to let the player reach `required_by`
+    before the obligation is `placed`." A locked door is exactly that moment —
+    committing one while its key still exists nowhere is how a run becomes
+    unwinnable, and it is the single failure this project most wants to rule out.
+    """
+    obligation = next(
+        (o for o in ledger.get("obligations", [])
+         if isinstance(o, dict) and o.get("item_id") == requires),
+        None,
+    )
+    if obligation is None:
+        report.error(
+            Code.GATE_WITHOUT_OBLIGATION,
+            f"{path}.locked",
+            f"the way to '{warp.get('to_zone')}' is locked behind '{requires}', which no "
+            f"obligation is responsible for placing. Nothing guarantees it exists.",
+        )
+        return
+
+    if obligation.get("status") == "open" or not obligation.get("placed_in"):
+        report.error(
+            Code.GATE_BEFORE_KEY,
+            f"{path}.locked",
+            f"this zone locks the way to '{warp.get('to_zone')}' behind "
+            f"'{requires}', but {obligation['id']} has not been placed in any "
+            f"committed zone yet. Committing this would strand the player.",
+        )
+
 
 def _obligation_satisfied(obligation: dict, pkg: dict) -> bool:
     kind = obligation.get("kind")
@@ -425,8 +460,14 @@ def _check_obligations(pkg: dict, ledger: dict, report: Report) -> None:
                 f"'{oid}' is already placed in '{placed_in}'; it cannot also be placed here.",
             )
 
-    # And the other direction: the ledger says it lives here, the package forgot to say so.
+    # And the other direction: the ledger says it lives here, the package forgot
+    # to say so. Only meaningful while the zone is being authored -- once it is
+    # committed, `placed_in` points at the package already on disk, and
+    # re-validating it would flag itself.
+    already_committed = ((ledger.get("zones") or {}).get(zone_id) or {}).get("committed") is True
     for oid, obligation in by_id.items():
+        if already_committed:
+            break
         if obligation.get("placed_in") == zone_id and oid not in claimed:
             report.error(
                 Code.OBLIGATION_NOT_CLAIMED,

@@ -29,6 +29,19 @@ ZONE = "zone_town_01"
 
 @pytest.fixture
 def ledger():
+    """A world with no outstanding obligations.
+
+    new_game seeds one so that an unauthored world still has a real gate, but
+    these tests are about the authoring ladder rather than the Fire Key
+    machinery — obligations get their own test below.
+    """
+    world = new_game.create(SEED)
+    world["obligations"] = []
+    return world
+
+
+@pytest.fixture
+def ledger_with_obligation():
     return new_game.create(SEED)
 
 
@@ -280,3 +293,46 @@ class TestAuthorZone:
         for slot_id in slot_ids(layout):
             assert slot_id in sent
         assert "Slots to fill" in sent
+
+
+class TestObligations:
+    """The Fire Key path through the authoring ladder."""
+
+    def test_a_response_that_ignores_the_obligation_is_rejected(self, ledger_with_obligation):
+        world = ledger_with_obligation
+        zone = world["zones"][ZONE]
+        kinds = {z: v["kind"] for z, v in world["zones"].items()}
+        built = generate_town(SEED, ZONE, zone["exits"], kinds)
+        register_interiors(world, ZONE, built)
+
+        # A perfectly nice town that simply forgets to put the key anywhere.
+        forgetful = RecordingProvider(responses=[fill_for(built), fill_for(built)])
+        result = run(author_zone(world, ZONE, built,
+                                 provider=forgetful, repair_provider=forgetful))
+        assert result.status == "placeholder"
+        assert any("obligation_unfulfilled" in note for note in result.notes), result.notes
+
+    def test_the_template_fill_places_the_key_anyway(self, ledger_with_obligation):
+        """Design doc 4.4: a failed call degrades to a boring zone, never to a
+        broken gate. A template fill that dropped the key would be the broken
+        gate."""
+        from backend.validation.validator import validate_zone_package
+
+        world = ledger_with_obligation
+        zone = world["zones"][ZONE]
+        kinds = {z: v["kind"] for z, v in world["zones"].items()}
+        built = generate_town(SEED, ZONE, zone["exits"], kinds)
+        register_interiors(world, ZONE, built)
+
+        result = run(author_zone(world, ZONE, built,
+                                 provider=RecordingProvider(responses=[LLMError("down")]),
+                                 repair_provider=RecordingProvider(responses=[LLMError("down")])))
+        assert result.status == "placeholder"
+        given = {
+            command["item_id"]
+            for entity in result.package["entities"]
+            for command in entity["script"]
+            if command.get("op") == "GIVE_ITEM"
+        }
+        assert "deep_key" in given, "the placeholder dropped the key item"
+        assert validate_zone_package(result.package, world).ok

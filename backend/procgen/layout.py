@@ -197,3 +197,15 @@ def interior_arrival(world_seed: int, zone_id: str, kind: str, edge: str) -> tup
     player is not standing on the warp they just came through."""
     x, y = interior_anchor(world_seed, zone_id, kind, edge)
     return x, y + 1
+
+
+def apply_gate(warp: dict, gates: dict | None) -> dict:
+    """Attach a lock to a warp if this threshold is gated.
+
+    `obligation_id` is bookkeeping for the engine and is not part of the Zone
+    Package schema, so it is dropped on the way in.
+    """
+    gate = (gates or {}).get(warp["to_zone"])
+    if gate:
+        warp["locked"] = {k: v for k, v in gate.items() if k != "obligation_id"}
+    return warp

@@ -4,8 +4,9 @@ A procedurally generated, LLM-authored JRPG. The engine owns structure and truth
 the model authors content inside a schema the engine validates. See
 `docs/design.md` for the full design.
 
-**Status: M4 (Battles) complete.** M5 — obligations enforced end to end, and
-save/load — is next.
+**Status: M5 complete — all five milestones done.** The design doc calls M5
+"the real test of the design"; the harness that proves it is
+`tests/test_softlock.py`.
 
 ## Quick start
 
@@ -241,8 +242,8 @@ Named so it is not mistaken for finished work:
   dialogue — a shopkeeper stands behind a real counter in a real room — but
   there is no buy/sell UI.
 - **Death is a convenience, not a consequence.** Losing a fight puts the party
-  back in town at half health. There is no game over and no save-file penalty,
-  because there is no save/load yet — that is M5.
+  back in town at half health. Now that saves exist, this is a design choice
+  left open rather than a missing piece.
 - **Enemies have no authored framing yet.** Design doc 7 allows the model to
   name enemies and write a boss's pre-fight lines. Encounters currently use the
   registry's display names.
@@ -320,7 +321,61 @@ Two service fixes fell out of this:
   `guard`, `spark` and `mend`, none of which existed anywhere. The ledger
   validator now rejects a party member who knows a skill nothing defines.
 
-## Next: M5
+## Decisions taken during M5
+
+This is the milestone the design doc calls the real test, so the guarantee is
+stated as an executable one: `tests/test_softlock.py` generates whole worlds
+across seven seeds and walks each of them to a fixed point, opening a locked
+door only when the key is genuinely in hand. Design doc 10 asked for exactly
+this. It is checked in and runs in about two seconds.
+
+- **The door stands one zone short of what it gates.** `required_by` names the
+  zone a key lets you *into*, so the lock belongs on the near side of that
+  threshold — and the key is placed a zone earlier still, so finding it and
+  using it are separated by at least one place. With the default three-zone
+  plan that puts the key in the town and the door in the mine, which is the
+  design doc's own worked example.
+- **The validator refuses the door, not the key.** Committing a locked warp
+  whose obligation has not yet been placed in a committed zone raises
+  `gate_before_key`. That is the exact moment a run becomes unwinnable, and it
+  is the cheapest place to catch it.
+- **The template fill places key items too.** It did not, which meant a world
+  generated with no model could not be committed at all — the placeholder chest
+  offered a potion where the obligation demanded a key, and the zone was
+  rejected. Design doc 4.4 promises a failed call degrades to a boring zone,
+  never to a broken gate; a template fill that dropped the key *was* the broken
+  gate.
+- **An unauthored world still gets a real gate.** `new_game` seeds one key item
+  and one locked door, which `apply_outline` replaces wholesale when the outline
+  call runs. Without it, a world generated offline had no obligations at all,
+  and the engine's central guarantee would only ever have been exercised when a
+  model happened to be reachable.
+- **A save is the ledger plus its committed packages.** Committed is permanent
+  (open question 2), so restoring a save has to bring back the exact zones that
+  world had rather than regenerating them. Save names are validated before they
+  become directory names.
+- **The harness was checked for teeth.** Deliberately placing a key behind the
+  door it opens fails 28 of its 29 assertions. A softlock test that cannot fail
+  is worse than none, because it reads like proof.
+
+## Beyond M5
+
+The five milestones are done. What the design doc leaves open, roughly in the
+order it would pay off:
+
+- **Prefetch adjacent zones** (design doc 6, open question 3). Authoring a zone
+  takes several seconds and currently happens while the player waits on a
+  transition screen.
+- **Shops and inns that transact.** The rooms, the counters and the shopkeepers
+  all exist.
+- **Beats that advance.** `status` is written once at outline time and nothing
+  moves it, so the outline is a backdrop rather than a spine.
+- **Authored enemy framing** (design doc 7): the model may name enemies and
+  write a boss's pre-fight lines; encounters currently use registry names.
+- **More world.** The zone plan is a fixed three-zone chain in `new_game`;
+  deriving it from the outline's beats is the obvious next structural step.
+
+## Retired: M5
 
 The outline call, the zone-authoring call, the provider abstraction, the
 validator's repair loop, and the template fallback. The seam is already open:

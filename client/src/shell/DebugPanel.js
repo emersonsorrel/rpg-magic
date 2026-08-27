@@ -8,7 +8,7 @@ import { bus, Events } from "../game/GameBus.js";
 
 const MAX_LOG = 60;
 
-export function mountShell(root, world, { seed, onNewWorld } = {}) {
+export function mountShell(root, world, { seed, onNewWorld, api } = {}) {
   root.innerHTML = `
     <h1>rpg-magic <span class="tag">M2</span></h1>
     <p class="zone" id="zone-line">loading…</p>
@@ -20,6 +20,13 @@ export function mountShell(root, world, { seed, onNewWorld } = {}) {
       <button id="regen" type="button">New world</button>
     </div>
     <p class="controls">Same seed, same world — regenerating with the seed above rebuilds it tile for tile.</p>
+
+    <h2>Saves</h2>
+    <div class="seedbar">
+      <input id="save-name" type="text" placeholder="name this save" maxlength="40" />
+      <button id="save-btn" type="button">Save</button>
+    </div>
+    <ul id="saves" class="saves"></ul>
 
     <h2>Controls</h2>
     <p class="controls">Arrows / WASD to walk · Space or Enter to talk and advance · Up/Down to pick an option</p>
@@ -38,6 +45,46 @@ export function mountShell(root, world, { seed, onNewWorld } = {}) {
   const inventoryEl = root.querySelector("#inventory");
   const logEl = root.querySelector("#log");
   const lines = [];
+
+  const savesEl = root.querySelector("#saves");
+
+  async function refreshSaves() {
+    if (!api) return;
+    try {
+      const slots = (await api.listSaves()).filter((slot) => !slot.active);
+      savesEl.innerHTML = slots.length
+        ? slots.map((slot) => `
+            <li>
+              <span title="${slot.premise ?? ""}">${slot.name}
+                <b class="dim">${slot.party.map((m) => `${m.name} L${m.level}`).join(", ")}</b>
+              </span>
+              <button type="button" data-load="${encodeURIComponent(slot.name)}">Load</button>
+            </li>`).join("")
+        : `<li class="empty">no saves yet</li>`;
+      for (const button of savesEl.querySelectorAll("[data-load]")) {
+        button.addEventListener("click", async () => {
+          await api.loadSlot(decodeURIComponent(button.dataset.load));
+          window.location.reload();
+        });
+      }
+    } catch (error) {
+      log(`could not list saves: ${error.message}`);
+    }
+  }
+
+  root.querySelector("#save-btn").addEventListener("click", async () => {
+    const field = root.querySelector("#save-name");
+    const name = field.value.trim();
+    if (!name || !api) return;
+    try {
+      await api.saveSlot(name);
+      field.value = "";
+      log(`saved as "${name}"`);
+      refreshSaves();
+    } catch (error) {
+      log(`save failed: ${error.message}`);
+    }
+  });
 
   root.querySelector("#regen").addEventListener("click", () => {
     const value = Number(root.querySelector("#seed").value);
@@ -63,6 +110,7 @@ export function mountShell(root, world, { seed, onNewWorld } = {}) {
 
   world.subscribe(renderState);
   renderState();
+  refreshSaves();
 
   bus.on(Events.ZONE_LOADED, ({ id, kind, summary, entities, size }) => {
     zoneLine.innerHTML = `<b class="on">${id}</b> — ${kind}, ${size[0]}×${size[1]}, ${entities} entities`;

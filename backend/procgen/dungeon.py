@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 
 from .layout import (
     BARRIER, DETAIL, EDGES, EMPTY, FLOOR, PATH, STAIRS_DOWN, STAIRS_UP, WALL,
-    WATER, Layout, Slot, arrival, gateway, interior_anchor, interior_arrival,
-    zone_size,
+    WATER, Layout, Slot, apply_gate, arrival, gateway, interior_anchor,
+    interior_arrival, zone_size,
 )
 from .rng import zone_rng
 
@@ -45,7 +45,8 @@ class Leaf:
         return (self.left.rooms() if self.left else []) + (self.right.rooms() if self.right else [])
 
 
-def generate(world_seed: int, zone_id: str, exits: dict[str, str], zone_kinds: dict[str, str]) -> Layout:
+def generate(world_seed: int, zone_id: str, exits: dict[str, str], zone_kinds: dict[str, str],
+             *, gates: dict | None = None) -> Layout:
     width, height = zone_size(world_seed, zone_id, "dungeon")
     layout = Layout(width=width, height=height, tileset=TILESET)
     layout.fill_ground(FLOOR)
@@ -67,7 +68,7 @@ def generate(world_seed: int, zone_id: str, exits: dict[str, str], zone_kinds: d
     _ensure_connected(layout, anchors)
     _decorate(layout, rng)
     _slots(layout, root, rng, anchors)
-    _warps(layout, world_seed, zone_id, exits, zone_kinds)
+    _warps(layout, world_seed, zone_id, exits, zone_kinds, gates)
     _spawn(layout, world_seed, zone_id, exits, anchors)
 
     return layout
@@ -293,7 +294,8 @@ def _slots(layout: Layout, root: Leaf, rng, anchors: list[tuple[int, int]]) -> N
                 break
 
 
-def _warps(layout: Layout, world_seed: int, zone_id: str, exits: dict, zone_kinds: dict) -> None:
+def _warps(layout: Layout, world_seed: int, zone_id: str, exits: dict, zone_kinds: dict,
+           gates: dict | None = None) -> None:
     opposite = {"north": "south", "south": "north", "east": "west", "west": "east",
                 "up": "down", "down": "up"}
     for edge, target in exits.items():
@@ -304,7 +306,7 @@ def _warps(layout: Layout, world_seed: int, zone_id: str, exits: dict, zone_kind
             tx, ty = arrival(world_seed, target, target_kind, back)
         else:
             tx, ty = interior_arrival(world_seed, target, target_kind, back)
-        layout.warps.append({"x": gx, "y": gy, "to_zone": target, "to_x": tx, "to_y": ty})
+        layout.warps.append(apply_gate({"x": gx, "y": gy, "to_zone": target, "to_x": tx, "to_y": ty}, gates))
 
 
 def _spawn(layout: Layout, world_seed: int, zone_id: str, exits: dict, anchors: list) -> None:

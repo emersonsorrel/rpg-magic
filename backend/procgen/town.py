@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from .layout import (
     BLOCKER, DETAIL, DOOR, EDGES, EMPTY, FEATURE, FLOOR, PATH, ROOF, WALL,
-    Layout, Slot, arrival, gateway, zone_size,
+    Layout, Slot, apply_gate, arrival, gateway, zone_size,
 )
 from .interior import SIZES as INTERIOR_SIZES
 from .rng import zone_rng
@@ -22,7 +22,8 @@ TILESET = "overworld_temperate"
 FACINGS = {"south": (0, 1), "north": (0, -1), "east": (1, 0), "west": (-1, 0)}
 
 
-def generate(world_seed: int, zone_id: str, exits: dict[str, str], zone_kinds: dict[str, str]) -> Layout:
+def generate(world_seed: int, zone_id: str, exits: dict[str, str], zone_kinds: dict[str, str],
+             *, gates: dict | None = None) -> Layout:
     width, height = zone_size(world_seed, zone_id, "town")
     layout = Layout(width=width, height=height, tileset=TILESET)
     layout.fill_ground(FLOOR)
@@ -37,7 +38,7 @@ def generate(world_seed: int, zone_id: str, exits: dict[str, str], zone_kinds: d
     _plaza(layout, roads, rng)
     _slots(layout, rng, buildings, roads)
     _interiors(layout, zone_id, buildings)
-    _warps(layout, world_seed, zone_id, exits, zone_kinds)
+    _warps(layout, world_seed, zone_id, exits, zone_kinds, gates)
     _spawn(layout, roads)
 
     return layout
@@ -270,13 +271,14 @@ def _slots(layout: Layout, rng, buildings: list[dict], roads: set) -> None:
                 break
 
 
-def _warps(layout: Layout, world_seed: int, zone_id: str, exits: dict, zone_kinds: dict) -> None:
+def _warps(layout: Layout, world_seed: int, zone_id: str, exits: dict, zone_kinds: dict,
+           gates: dict | None = None) -> None:
     for edge, target in exits.items():
         if edge not in EDGES:
             continue
         gx, gy = gateway(world_seed, zone_id, "town", edge)
         tx, ty = arrival(world_seed, target, zone_kinds.get(target, "dungeon"), _opposite_edge(edge))
-        layout.warps.append({"x": gx, "y": gy, "to_zone": target, "to_x": tx, "to_y": ty})
+        layout.warps.append(apply_gate({"x": gx, "y": gy, "to_zone": target, "to_x": tx, "to_y": ty}, gates))
 
         # A signpost beside the road out, if there is room for one.
         for sx, sy in ((gx - 1, gy + 1), (gx + 1, gy + 1), (gx - 1, gy - 1), (gx + 1, gy - 1)):

@@ -79,6 +79,17 @@ export class WorldState {
     return true;
   }
 
+  // --- obligations -------------------------------------------------------
+
+  /** Record that a key has been used on the door it was placed for. */
+  consumeObligation(itemId) {
+    const obligation = (this.ledger.obligations ?? []).find((o) => o.item_id === itemId);
+    if (!obligation || obligation.status === "consumed") return false;
+    obligation.status = "consumed";
+    this.#changed();
+    return true;
+  }
+
   // --- one-shot entities -------------------------------------------------
 
   isSpent(entityId) {
@@ -115,6 +126,8 @@ export class WorldState {
       inventory: this.ledger.inventory,
       flags: this.ledger.flags,
       player_position: this.ledger.player_position,
+      // status only; the engine owns where an obligation lives.
+      obligations: this.ledger.obligations,
     };
   }
 

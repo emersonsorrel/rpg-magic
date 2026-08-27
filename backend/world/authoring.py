@@ -10,7 +10,7 @@ become permanent.
 
 from __future__ import annotations
 
-from ..llm.author import apply_outline, author_outline, author_zone, planned_placement
+from ..llm.author import apply_outline, author_outline, author_zone, gates_in, planned_placement
 from ..llm.config import authoring_enabled
 from ..llm.provider import LLMError
 from ..procgen import dungeon, interior, town
@@ -64,7 +64,10 @@ def generate_layout(ledger: dict, zone_id: str) -> Layout:
             role=zone.get("role", "house"),
             return_to=tuple(zone.get("return_to") or (1, 1)),
         )
-    return generator(ledger["seed"], zone_id, zone.get("exits", {}), zone_kinds(ledger))
+    return generator(
+        ledger["seed"], zone_id, zone.get("exits", {}), zone_kinds(ledger),
+        gates=gates_in(ledger, zone_id, zone_order(ledger)),
+    )
 
 
 def register_interiors(ledger: dict, zone_id: str, layout) -> list[str]:

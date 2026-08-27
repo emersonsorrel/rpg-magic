@@ -118,17 +118,58 @@ def apply_outline(ledger: dict, data: dict, zone_order: list[str]) -> None:
             member["name"] = seed["name"][:24]
 
 
-def planned_placement(ledger: dict, obligation: dict, zone_order: list[str]) -> str | None:
-    """Which zone should physically contain this obligation's item.
+def gate_zone(ledger: dict, obligation: dict, zone_order: list[str]) -> str | None:
+    """Which zone holds the locked door.
 
-    The zone immediately before the one that needs it — far enough forward to
-    stay relevant, never after the door it opens.
+    `required_by` names the zone the key lets you *into*, so the door itself
+    stands in the zone before it — that is the side of the threshold the player
+    is on while they still need the key.
     """
     required_by = obligation.get("required_by")
+    if not zone_order:
+        return None
     if required_by not in zone_order:
-        return zone_order[0] if zone_order else None
-    index = zone_order.index(required_by)
-    return zone_order[max(0, index - 1)]
+        return zone_order[0]
+    return zone_order[max(0, zone_order.index(required_by) - 1)]
+
+
+def planned_placement(ledger: dict, obligation: dict, zone_order: list[str]) -> str | None:
+    """Which zone physically contains the key.
+
+    Strictly before the zone holding the door wherever the map allows it, so
+    finding the key and using it are separated by at least one place. Clamped to
+    the first zone rather than going negative: a key that would have to exist
+    before the game starts instead sits in the starting town.
+    """
+    gate = gate_zone(ledger, obligation, zone_order)
+    if gate is None:
+        return None
+    return zone_order[max(0, zone_order.index(gate) - 1)]
+
+
+def gates_in(ledger: dict, zone_id: str, zone_order: list[str]) -> dict:
+    """Locked doors this zone must contain, keyed by the zone they lead into.
+
+    Engine-owned end to end: the outline says a key must exist, the engine
+    decides where the key sits and which threshold it opens. The model is never
+    consulted about either.
+    """
+    gates = {}
+    for obligation in ledger.get("obligations", []):
+        if obligation.get("kind") != "key_item":
+            continue
+        if gate_zone(ledger, obligation, zone_order) != zone_id:
+            continue
+        target = obligation.get("required_by")
+        if target == zone_id:
+            continue          # nothing to lock: the door would be into itself
+        gates[target] = {
+            "requires_item": obligation["item_id"],
+            "consumes": False,
+            "locked_text": f"The way on is sealed. It wants the {obligation['name']}.",
+            "obligation_id": obligation["id"],
+        }
+    return gates
 
 
 # --- zone authoring (design doc 4.3) ---------------------------------------
@@ -209,7 +250,8 @@ async def author_zone(ledger: dict, zone_id: str, layout: Layout, *, provider=No
     ]
     fulfills = [o["id"] for o in due]
 
-    placeholder = assemble(layout, zone_id, kind, fulfills=fulfills)
+    must_place = [{"item_id": o["item_id"], "name": o["name"]} for o in due if o.get("item_id")]
+    placeholder = assemble(layout, zone_id, kind, fulfills=fulfills, must_place=must_place)
     if not layout.slots:
         return Authored(placeholder, "placeholder", notes=["zone has no slots to fill"])
     # An explicitly supplied provider means a caller (or a test) has already

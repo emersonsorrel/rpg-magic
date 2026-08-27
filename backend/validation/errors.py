@@ -54,6 +54,8 @@ class Code:
     OBLIGATION_UNFULFILLED = "obligation_unfulfilled"
     OBLIGATION_ALREADY_PLACED = "obligation_already_placed"
     OBLIGATION_NOT_CLAIMED = "obligation_not_claimed"
+    GATE_BEFORE_KEY = "gate_before_key"
+    GATE_WITHOUT_OBLIGATION = "gate_without_obligation"
 
     # ledger
     DANGLING_ZONE_REF = "dangling_zone_ref"

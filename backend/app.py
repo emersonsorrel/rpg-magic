@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import pathlib
+import re
 
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
@@ -25,7 +26,7 @@ from .validation.registries import load_registries
 from .validation.schema import schema_hash
 from .validation.validator import validate_ledger
 from .world.authoring import UnknownZone, ZoneRejected, begin, get_or_generate
-from .world.store import WorldStore
+from .world.store import ACTIVE_SLOT, WorldStore, copy_slot, list_slots
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_SEED = 8471029
@@ -131,7 +132,7 @@ async def save_state(payload: dict = Body(...)):
     async with _writing:
         ledger = s.load_ledger()
         merged = dict(ledger)
-        for field in ("party", "inventory", "flags", "player_position"):
+        for field in ("party", "inventory", "flags", "player_position", "obligations"):
             if field in payload:
                 merged[field] = payload[field]
 
@@ -143,6 +144,53 @@ async def save_state(payload: dict = Body(...)):
             )
         s.save_ledger(merged)
     return {"saved": True}
+
+
+SLOT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,40}$")
+
+
+def _check_slot(name: str) -> str:
+    """Slot names become directory names, so they are validated rather than
+    trusted."""
+    if not SLOT_PATTERN.match(name) or name == ACTIVE_SLOT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{name}' is not a usable save name (letters, digits, spaces, - and _; "
+                   f"and not '{ACTIVE_SLOT}')",
+        )
+    return name
+
+
+@app.get("/api/saves")
+def get_saves():
+    return {"saves": list_slots()}
+
+
+@app.post("/api/saves/{name}")
+async def save_to_slot(name: str):
+    """Snapshot the running world under a name.
+
+    A world is the ledger plus its committed packages: committed is permanent,
+    so a save has to preserve the exact zones that world had rather than leaving
+    them to be regenerated.
+    """
+    _check_slot(name)
+    async with _writing:
+        if not store().exists():
+            raise HTTPException(status_code=404, detail="there is no world to save yet")
+        copy_slot(ACTIVE_SLOT, name)
+    return {"saved": name}
+
+
+@app.post("/api/saves/{name}/load")
+async def load_from_slot(name: str):
+    _check_slot(name)
+    async with _writing:
+        try:
+            copy_slot(name, ACTIVE_SLOT)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail=f"no save named '{name}'")
+        return store().load_ledger()
 
 
 @app.post("/api/world/position")

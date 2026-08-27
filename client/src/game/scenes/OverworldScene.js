@@ -393,9 +393,23 @@ export class OverworldScene extends Phaser.Scene {
 
   checkWarp() {
     const warp = this.pkg.warps.find((w) => w.x === this.px && w.y === this.py);
-    if (warp) {
-      this.enterZone({ toZone: warp.to_zone, toX: warp.to_x, toY: warp.to_y });
+    if (!warp) return;
+
+    const lock = warp.locked;
+    if (lock?.requires_item && this.world.countItem(lock.requires_item) < 1) {
+      // The backend guarantees this key exists somewhere already visitable, so
+      // this is a "not yet", never a dead end.
+      this.runScript([{ op: "SHOW_TEXT", speaker: null, text: lock.locked_text ?? "It will not open." }]);
+      return;
     }
+    if (lock?.requires_item) {
+      if (lock.consumes) this.world.takeItem(lock.requires_item, 1);
+      if (this.world.consumeObligation(lock.requires_item)) {
+        bus.emit(Events.LOG, `the ${lock.requires_item} opens the way to ${warp.to_zone}`);
+        api.saveState(this.world.progressSnapshot()).catch(() => {});
+      }
+    }
+    this.enterZone({ toZone: warp.to_zone, toX: warp.to_x, toY: warp.to_y });
   }
 
   // --- interaction -------------------------------------------------------
