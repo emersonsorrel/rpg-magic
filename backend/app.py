@@ -26,7 +26,7 @@ from .validation.registries import load_registries
 from .validation.schema import schema_hash
 from .validation.validator import validate_ledger
 from .world.authoring import UnknownZone, ZoneRejected, begin, get_or_generate
-from .world.store import ACTIVE_SLOT, WorldStore, copy_slot, list_slots
+from .world.store import ACTIVE_SLOT, WorldStore, copy_slot, list_slots, repair_ledger
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_SEED = 8471029
@@ -78,7 +78,36 @@ async def get_world():
     async with _writing:
         if not s.exists():
             return await begin(DEFAULT_SEED, s)
-        return s.load_ledger()
+
+        ledger = s.load_ledger()
+        report = validate_ledger(ledger)
+        if report.ok:
+            return ledger
+
+        # A world written before save_ledger validated, or by an older build.
+        # Dropping properties the schema does not recognise is safe -- they
+        # carry no meaning -- and it beats leaving the player with a save they
+        # cannot load and no way to say so.
+        healed, dropped = repair_ledger(ledger)
+        if dropped and validate_ledger(healed).ok:
+            s.save_ledger(healed)
+            print(f"repaired the stored ledger by dropping: {', '.join(dropped)}")
+            return healed
+
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "world_unloadable",
+                "message": (
+                    "This world's ledger no longer validates and could not be "
+                    "repaired. Starting a new world will replace it."
+                ),
+                "issues": [
+                    {"code": i.code, "path": i.path, "message": i.message}
+                    for i in report.errors[:8]
+                ],
+            },
+        )
 
 
 @app.post("/api/new-game")

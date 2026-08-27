@@ -19,6 +19,31 @@ def saves_root() -> pathlib.Path:
     return pathlib.Path(os.environ.get("RPG_MAGIC_SAVES", ROOT / "saves"))
 
 
+class InvalidLedger(Exception):
+    """A ledger that would not load back. Refused rather than written."""
+
+    def __init__(self, report):
+        super().__init__(f"refusing to save an invalid ledger:\n{report}")
+        self.report = report
+
+
+def repair_ledger(ledger: dict) -> tuple[dict, list[str]]:
+    """Drop top-level keys the schema does not recognise.
+
+    The schema is authoritative, so a property it has never heard of carries no
+    meaning and can go. This exists because a stray `ledger["notes"] = None` on
+    the outline-failure path once produced saves that the client refused to
+    load, with no way back except deleting the world by hand.
+    """
+    from ..validation.schema import SCHEMA_FILES, validator_for
+
+    allowed = set(validator_for("ledger").schema["properties"])
+    dropped = sorted(set(ledger) - allowed)
+    if not dropped:
+        return ledger, []
+    return {k: v for k, v in ledger.items() if k in allowed}, dropped
+
+
 class WorldStore:
     def __init__(self, slot: str = "default", root: pathlib.Path | None = None):
         self.dir = (root or saves_root()) / slot
@@ -37,6 +62,17 @@ class WorldStore:
         return json.loads(self.ledger_path.read_text())
 
     def save_ledger(self, ledger: dict) -> None:
+        """Validate before writing.
+
+        The ledger is the save file. Committed zone packages have always been
+        gated this way; the ledger was not, which is how one invalid write could
+        make a world permanently unloadable.
+        """
+        from ..validation.validator import validate_ledger
+
+        report = validate_ledger(ledger)
+        if not report.ok:
+            raise InvalidLedger(report)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.ledger_path.write_text(json.dumps(ledger, indent=2) + "\n")
 

@@ -18,14 +18,18 @@ llm:
   enabled: true
 
   outline:
-    provider: openrouter
-    model: openai/gpt-4.1
-    max_tokens: 3000
+    provider: lmstudio
+    model: gemma-4-26b-a4b-it-heretic-guff
+    base_url: http://127.0.0.1:1234/v1
+    max_tokens: 10000
+    timeout: 900
 
   zone_author:
     provider: openrouter
-    model: openai/gpt-4.1-mini
-    max_tokens: 4000
+    model: gemma-4-26b-a4b-it-heretic-guff
+    base_url: http://127.0.0.1:1234/v1
+    max_tokens: 10000
+    timeout: 900
 
     # --- running this role locally ---------------------------------------
     # Anything speaking the OpenAI chat API works: LM Studio, llama.cpp's

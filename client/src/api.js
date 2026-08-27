@@ -20,12 +20,26 @@ export class ZoneRejectedError extends Error {
   }
 }
 
+export class WorldUnloadableError extends Error {
+  constructor(detail) {
+    super(detail.message ?? "the stored world could not be loaded");
+    this.name = "WorldUnloadableError";
+    this.headline = "This world's save is damaged";
+    this.lead = detail.message ?? "";
+    this.detail = (detail.issues ?? [])
+      .map((issue) => `[${issue.code}] ${issue.path} ${issue.message}`)
+      .join("\n");
+  }
+}
+
 async function request(path, options) {
   const response = await fetch(BASE + path, options);
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     if (body?.error === "zone_rejected") throw new ZoneRejectedError(body);
-    throw new Error(`${path}: ${response.status} ${body?.detail ?? response.statusText}`);
+    if (body?.detail?.error === "world_unloadable") throw new WorldUnloadableError(body.detail);
+    const detail = typeof body?.detail === "string" ? body.detail : response.statusText;
+    throw new Error(`${path}: ${response.status} ${detail}`);
   }
   return body;
 }

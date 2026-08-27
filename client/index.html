@@ -87,8 +87,24 @@
       .saves .empty { color: #6a7284; }
       .log { font-size: 11px; color: var(--dim); max-height: 260px; overflow-y: auto; }
       .log li { padding: 2px 0; border-bottom: 1px solid #1c2330; word-break: break-word; }
-      .fatal { color: #ff9d9d; font-size: 13px; max-width: 640px; }
-      .fatal pre { white-space: pre-wrap; color: var(--dim); }
+      .fatal { color: var(--ink); font-size: 13px; max-width: 560px; padding: 24px; }
+      .fatal h2 { color: #ff9d9d; margin: 0 0 8px; font-size: 15px; }
+      .fatal pre { white-space: pre-wrap; color: var(--dim); font-size: 11px; margin: 8px 0 0; }
+      .fatal details { margin-top: 14px; }
+      .fatal summary { color: var(--dim); cursor: pointer; font-size: 12px; }
+      .recover-lead { color: var(--dim); margin: 0 0 16px; }
+      .recover-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .recover-actions input {
+        width: 130px; background: #0e131b; color: var(--ink); border: 1px solid var(--line);
+        border-radius: 3px; padding: 5px 7px; font: inherit; font-size: 12px;
+      }
+      .recover-actions button {
+        background: var(--accent); color: #1a1206; border: 0; border-radius: 3px;
+        padding: 5px 12px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+      }
+      .recover-actions button.secondary { background: #223049; color: var(--ink); border: 1px solid var(--line); }
+      .recover-actions button:disabled { opacity: .5; cursor: default; }
+      .recover-status { color: var(--accent); font-size: 12px; min-height: 16px; margin: 12px 0 0; }
       @media (max-width: 900px) {
         body { flex-direction: column; }
         #shell { flex: 1 1 auto; border-left: none; border-top: 1px solid var(--line); max-height: none; }

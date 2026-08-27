@@ -41,6 +41,11 @@ export class ZoneValidationError extends Error {
     super(`${source} failed schema validation:\n${detail}`);
     this.name = "ZoneValidationError";
     this.errors = errors;
+    // Read by the recovery screen, so a schema dump is not the first thing a
+    // player sees when a roll goes wrong.
+    this.headline = "This world did not come out valid";
+    this.lead = "Something the generator produced does not match the schema. Rolling again usually fixes it.";
+    this.detail = `${source}\n${detail}`;
   }
 }
 

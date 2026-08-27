@@ -153,9 +153,10 @@ async def begin(seed: int, store: WorldStore, premise: str | None = None,
             outline = await author_outline(premise)
             apply_outline(ledger, outline)
         except LLMError as exc:
-            # No outline means no obligations and a placeholder premise. The
-            # game is duller, not broken.
-            ledger.setdefault("notes", None)
+            # No outline means the stub plan, stub premise and stub obligation
+            # from new_game -- duller, but a complete and valid world. Nothing
+            # is added to the ledger here: it must stay exactly what
+            # new_game.create() produced, which the schema accepts.
             print(f"outline call failed, continuing unauthored: {exc}")
 
     # Deliberately not saved yet. commit() writes the ledger once the starting

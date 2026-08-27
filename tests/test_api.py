@@ -228,3 +228,73 @@ def test_a_save_name_cannot_escape_the_saves_directory(client):
     client.get("/api/world")
     for bad in ("../etc", "default", "with/slash", ""):
         assert client.post(f"/api/saves/{bad}").status_code in (400, 404, 405)
+
+
+def test_a_failed_outline_still_leaves_a_valid_world(client, monkeypatch):
+    """The bug that started this: a failed outline call added a top-level key
+    the schema forbids, the backend saved it anyway, and the client then refused
+    to load the world with no way out."""
+    from unittest.mock import patch
+
+    from backend.llm.provider import LLMError
+
+    async def boom(*_args, **_kwargs):
+        raise LLMError("max_tokens exceeded")
+
+    with patch("backend.world.authoring.authoring_enabled", return_value=True), \
+         patch("backend.world.authoring.author_outline", boom):
+        ledger = client.post("/api/new-game?seed=99").json()
+
+    assert validate_ledger(ledger).ok, validate_ledger(ledger)
+    assert client.get("/api/world").status_code == 200
+    assert ledger["obligations"], "an unauthored world still needs its gate"
+
+
+def test_an_invalid_ledger_is_never_written(client, tmp_path):
+    """The ledger is the save file. Zone packages have always been gated this
+    way; the ledger was not, which is how one bad write made a world
+    permanently unloadable."""
+    from backend.world.store import InvalidLedger, WorldStore
+
+    store = WorldStore("guard", root=tmp_path)
+    ledger = client.get("/api/world").json()
+    ledger["notes"] = None
+
+    with pytest.raises(InvalidLedger):
+        store.save_ledger(ledger)
+    assert not store.exists()
+
+
+def test_a_world_damaged_by_an_older_build_is_repaired_on_load(client, tmp_path, monkeypatch):
+    """Saves written before that guard existed must still open."""
+    import json
+
+    client.get("/api/world")
+    path = client.app  # noqa: F841  (kept for clarity about what `client` drives)
+
+    from backend.world.store import saves_root
+
+    ledger_path = saves_root() / "default" / "ledger.json"
+    stored = json.loads(ledger_path.read_text())
+    stored["notes"] = None
+    ledger_path.write_text(json.dumps(stored))
+
+    response = client.get("/api/world")
+    assert response.status_code == 200
+    assert "notes" not in response.json()
+    assert validate_ledger(response.json()).ok
+
+
+def test_rerolling_replaces_a_damaged_world(client):
+    """The recovery button's server side: it must work from any state."""
+    import json
+
+    from backend.world.store import saves_root
+
+    client.get("/api/world")
+    ledger_path = saves_root() / "default" / "ledger.json"
+    ledger_path.write_text(json.dumps({"totally": "broken"}))
+
+    rerolled = client.post("/api/new-game?seed=4242").json()
+    assert validate_ledger(rerolled).ok
+    assert rerolled["seed"] == 4242

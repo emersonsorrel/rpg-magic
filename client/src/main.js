@@ -19,9 +19,48 @@ import { ZoneCache } from "./game/ZoneCache.js";
 import { mountShell } from "./shell/DebugPanel.js";
 import { bus, Events } from "./game/GameBus.js";
 
-function fatal(message, detail) {
-  document.getElementById("game").innerHTML =
-    `<div class="fatal"><h2>${message}</h2><pre>${detail ?? ""}</pre></div>`;
+/**
+ * Whatever went wrong, the player gets a way out.
+ *
+ * A world that fails to load used to end at a schema error with no controls on
+ * screen at all — the shell mounts after the world loads, so its New World
+ * button was never there when it was most needed. A bad roll must never be a
+ * dead end.
+ */
+function showRecovery(error, { seed } = {}) {
+  const detail = error?.detail ?? error?.message ?? String(error);
+  const suggested = seed ?? Math.floor(Math.random() * 4294967295);
+
+  document.getElementById("game").innerHTML = `
+    <div class="fatal">
+      <h2>${error?.headline ?? "This world could not be loaded"}</h2>
+      <p class="recover-lead">${error?.lead ?? "Rolling a new one replaces it. Nothing else is affected."}</p>
+      <div class="recover-actions">
+        <input id="recover-seed" type="number" value="${suggested}" />
+        <button id="recover-new" type="button">Roll a new world</button>
+        <button id="recover-retry" type="button" class="secondary">Try again</button>
+      </div>
+      <p id="recover-status" class="recover-status"></p>
+      <details><summary>What went wrong</summary><pre>${detail}</pre></details>
+    </div>`;
+
+  const status = document.getElementById("recover-status");
+  const buttons = [...document.querySelectorAll(".recover-actions button")];
+
+  document.getElementById("recover-retry").addEventListener("click", () => window.location.reload());
+  document.getElementById("recover-new").addEventListener("click", async () => {
+    const value = Number(document.getElementById("recover-seed").value);
+    buttons.forEach((b) => { b.disabled = true; });
+    status.textContent = "Rolling… authoring the opening town can take a minute.";
+    try {
+      await api.newGame(Number.isFinite(value) ? value : suggested);
+      window.location.reload();
+    } catch (failure) {
+      // Even the reroll can fail. Say so and leave the buttons usable.
+      buttons.forEach((b) => { b.disabled = false; });
+      status.textContent = `That roll failed too: ${failure.message}. Try another seed.`;
+    }
+  });
 }
 
 async function boot() {
@@ -29,7 +68,7 @@ async function boot() {
   let zone;
   let registries;
   try {
-    const schemaHash = await api.ready();
+    await api.ready();
     ledger = await api.getWorld();
     [zone, registries] = await Promise.all([
       api.getZone(ledger.player_position.zone),
@@ -37,7 +76,7 @@ async function boot() {
     ]);
   } catch (error) {
     console.error(error);
-    fatal("Could not start", error.message);
+    showRecovery(error, { seed: ledger?.seed });
     return;
   }
 
