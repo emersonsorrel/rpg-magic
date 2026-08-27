@@ -30,9 +30,76 @@ Tests:
 .venv/bin/python -m pytest -q && (cd client && npm test)
 ```
 
+### The API key
+
+Authoring needs an OpenRouter key in `.env` at the repo root:
+
+```bash
+echo "OPENROUTER_API_KEY=sk-or-v1-..." > .env && chmod 600 .env
+```
+
+`.env` is gitignored and this repo is public — keep it that way. Without a key
+the engine still runs end to end; every zone commits the deterministic
+placeholder content instead, gates and all. `RPG_MAGIC_NO_LLM=1` forces that
+path, which is what the test suite uses. See below for pointing a role at a
+local model instead.
+
 Arrows or WASD to walk, Space/Enter to talk and advance text, Up/Down to pick an
 option. Walk north out of town to reach the mine; the floor below it is generated
 the first time you take the stairs. The seed box in the shell rebuilds the world.
+
+### Running a model locally
+
+Design doc 4.1 wants one interface with a hosted and a local implementation.
+Anything speaking the OpenAI chat API qualifies — LM Studio, llama.cpp's server,
+vLLM — so they share one provider and differ only by `base_url`. Ollama speaks
+its own API and keeps its own provider type.
+
+Point a role at a local server in `llm.yaml`:
+
+```yaml
+  zone_author:
+    provider: lmstudio          # or llamacpp, vllm, ollama
+    model: qwen/qwen3.8-27b
+    base_url: http://127.0.0.1:1234/v1
+    max_tokens: 8000
+    timeout: 900
+```
+
+or leave the file alone and set the address in the environment, which is easier
+when the server is on another machine:
+
+```bash
+LMSTUDIO_BASE_URL=http://192.168.1.20:1234/v1
+```
+
+**Check a model before switching to it.** Two things decide whether one is usable
+here, and neither is on a model card:
+
+```bash
+.venv/bin/python -m backend.llm.probe --list --base-url http://HOST:1234/v1
+.venv/bin/python -m backend.llm.probe --provider lmstudio --model MODEL --base-url http://HOST:1234/v1
+.venv/bin/python -m backend.llm.probe --compare      # every role in llm.yaml
+```
+
+The probe runs the real outline and zone-authoring schemas and reports, per
+schema, whether the model honoured them, how long it took, and how much of its
+output was reasoning rather than answer. It exists because:
+
+- **A model that ignores a nested schema returns HTTP 200 with prose.** That is
+  what rules a model out here, and it stays invisible until something downstream
+  breaks. Providers verify every response against the schema they asked for, so
+  drift raises `LLMError` and falls into the repair ladder rather than poisoning
+  a zone — but a model that fails every time just burns the repair budget.
+- **Reasoning models can spend the whole budget thinking.** A 27B local model
+  used 1178 of 1276 output tokens on reasoning for a single NPC, and returns an
+  empty string if it thinks up to its ceiling. Give local roles a `max_tokens`
+  several times what a hosted model needs and a `timeout` in the hundreds of
+  seconds.
+
+Quality degrades safely either way: a local model that cannot hold the schema
+falls back through repair to the deterministic template fill, which still places
+key items and still commits a valid zone.
 
 ### Why there is no bundler
 

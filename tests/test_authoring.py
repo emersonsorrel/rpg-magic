@@ -401,3 +401,87 @@ class TestZonePlan:
         apply_outline(ledger, outline)
         assert len(ledger["zones"]) == 5
         assert list(ledger["zones"].values())[-1]["kind"] == "town"
+
+
+class TestProviderConfig:
+    """Role -> provider mapping, including local endpoints (design doc 4.1)."""
+
+    def test_an_openai_compatible_role_points_at_its_base_url(self):
+        from backend.llm.config import build_provider
+
+        provider = build_provider("r", {"r": {
+            "provider": "lmstudio", "model": "some-model",
+            "base_url": "http://192.168.0.9:1234/v1",
+        }})
+        assert provider.base_url == "http://192.168.0.9:1234/v1"
+        assert provider.model == "some-model"
+
+    def test_a_local_endpoint_needs_no_api_key(self):
+        from backend.llm.config import build_provider
+
+        provider = build_provider("r", {"r": {"provider": "lmstudio", "model": "m"}})
+        assert provider.configured is True
+
+    def test_the_environment_can_redirect_a_local_endpoint(self, monkeypatch):
+        """So a server on another machine needs no file edit."""
+        from backend.llm.config import role_config
+
+        monkeypatch.setenv("LMSTUDIO_BASE_URL", "http://172.20.10.6:1234/v1")
+        spec = role_config("r", {"r": {"provider": "lmstudio", "model": "m"}})
+        assert spec.base_url == "http://172.20.10.6:1234/v1"
+
+    def test_local_roles_get_a_patient_default_timeout(self):
+        """A 27B reasoning model can take minutes on one zone."""
+        from backend.llm.config import role_config
+
+        local = role_config("r", {"r": {"provider": "lmstudio", "model": "m"}})
+        hosted = role_config("r", {"r": {"provider": "openrouter", "model": "m"}})
+        assert local.timeout > hosted.timeout
+
+    def test_ollama_keeps_its_own_provider(self):
+        from backend.llm.config import build_provider
+        from backend.llm.local import LocalProvider
+
+        assert isinstance(build_provider("r", {"r": {"provider": "ollama", "model": "m"}}), LocalProvider)
+
+    def test_an_unknown_provider_says_what_is_available(self):
+        from backend.llm.config import build_provider
+
+        with pytest.raises(ValueError, match="lmstudio"):
+            build_provider("r", {"r": {"provider": "carrier-pigeon", "model": "m"}})
+
+    def test_a_budget_spent_entirely_on_reasoning_is_reported_as_such(self):
+        """A reasoning model that thinks up to its ceiling returns HTTP 200 and
+        an empty string; 'response was not JSON' would send you looking in
+        entirely the wrong place."""
+        import asyncio
+
+        from backend.llm.openai_compatible import OpenAICompatibleProvider
+
+        provider = OpenAICompatibleProvider("m", base_url="http://localhost:1/v1")
+
+        class Response:
+            status_code = 200
+            def json(self):
+                return {
+                    "choices": [{"message": {"content": ""}}],
+                    "usage": {"completion_tokens": 100,
+                              "completion_tokens_details": {"reasoning_tokens": 100}},
+                }
+
+        async def fake_post(*_args, **_kwargs):
+            return Response()
+
+        class FakeClient:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *_): return False
+            post = staticmethod(fake_post)
+
+        import backend.llm.openai_compatible as module
+        original = module.httpx2.AsyncClient
+        module.httpx2.AsyncClient = lambda **_: FakeClient()
+        try:
+            with pytest.raises(LLMError, match="reasoning"):
+                asyncio.run(provider.complete(system="s", user="u", schema={}, max_tokens=100))
+        finally:
+            module.httpx2.AsyncClient = original

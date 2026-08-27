@@ -1,0 +1,34 @@
+#!/bin/sh
+# Block commits containing a real API key.
+#
+# This repo is public and the authoring backend needs a key, so the key lives in
+# .env (gitignored, mode 600). This is the second line of defence, because
+# "remember not to commit it" is not a defence.
+#
+# Matches the *shape of a real key* rather than the prefix, so the placeholder
+# in the README (sk-or-v1-...) does not trip it. An earlier ad-hoc check keyed
+# on the prefix and cried wolf on the documentation.
+#
+# Enabled with:  git config core.hooksPath .githooks
+
+set -e
+
+PATTERN='sk-or-v1-[0-9a-f]{48,}|sk-ant-[A-Za-z0-9_-]{40,}|sk-proj-[A-Za-z0-9_-]{40,}'
+
+if git diff --cached -U0 | grep -nE "^\+.*($PATTERN)" >/dev/null 2>&1; then
+    echo "pre-commit: refusing to commit — a live-looking API key is staged:" >&2
+    git diff --cached -U0 --name-only | while read -r f; do
+        if git diff --cached -U0 -- "$f" | grep -qE "^\+.*($PATTERN)"; then
+            echo "  $f" >&2
+        fi
+    done
+    echo >&2
+    echo "Keys belong in .env, which is gitignored. If this is a false positive," >&2
+    echo "commit with --no-verify." >&2
+    exit 1
+fi
+
+if git diff --cached --name-only | grep -qx '.env'; then
+    echo "pre-commit: refusing to commit .env" >&2
+    exit 1
+fi

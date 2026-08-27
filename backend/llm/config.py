@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import yaml
 
 from .local import LocalProvider
+from .openai_compatible import OpenAICompatibleProvider
 from .openrouter import OpenRouterProvider
 from .provider import LLMProvider
 
@@ -38,11 +39,27 @@ def load_env(path: pathlib.Path = ENV_PATH) -> None:
         os.environ.setdefault(key.strip(), value.strip())
 
 
+# Anything speaking the OpenAI chat API. LM Studio and llama.cpp's server both
+# do; only the base URL differs.
+OPENAI_COMPATIBLE = {"openai_compatible", "lmstudio", "llamacpp", "vllm"}
+
+DEFAULT_BASE_URLS = {
+    "lmstudio": "http://127.0.0.1:1234/v1",
+    "llamacpp": "http://127.0.0.1:8080/v1",
+    "vllm": "http://127.0.0.1:8000/v1",
+}
+
+
 @dataclass(frozen=True)
 class RoleConfig:
     provider: str
     model: str
     max_tokens: int = 2000
+    base_url: str | None = None
+    # Local models are slow. A 27B reasoning model can spend a minute on one
+    # NPC, so the default here is far more patient than a hosted call needs.
+    timeout: float = 90.0
+    api_key_env: str | None = None
 
 
 def load_config(path: pathlib.Path | None = None) -> dict:
@@ -55,21 +72,45 @@ def role_config(role: str, config: dict | None = None) -> RoleConfig:
     entry = config.get(role)
     if not entry:
         raise KeyError(f"no llm role '{role}' in llm.yaml")
+    provider = entry["provider"]
     return RoleConfig(
-        provider=entry["provider"],
+        provider=provider,
         model=entry["model"],
         max_tokens=int(entry.get("max_tokens", 2000)),
+        base_url=entry.get("base_url") or _default_base_url(provider),
+        timeout=float(entry.get("timeout", 600.0 if provider in OPENAI_COMPATIBLE else 90.0)),
+        api_key_env=entry.get("api_key_env"),
     )
+
+
+def _default_base_url(provider: str) -> str | None:
+    """An env var beats the built-in default, so a server on another machine
+    needs no file edit: LMSTUDIO_BASE_URL=http://host:1234/v1"""
+    if provider not in OPENAI_COMPATIBLE:
+        return None
+    override = os.environ.get(f"{provider.upper()}_BASE_URL") or os.environ.get("LOCAL_LLM_BASE_URL")
+    return override or DEFAULT_BASE_URLS.get(provider, DEFAULT_BASE_URLS["lmstudio"])
 
 
 def build_provider(role: str, config: dict | None = None) -> LLMProvider:
     load_env()
     spec = role_config(role, config)
     if spec.provider == "openrouter":
-        return OpenRouterProvider(spec.model)
-    if spec.provider == "local":
+        return OpenRouterProvider(spec.model, timeout=spec.timeout)
+    if spec.provider in OPENAI_COMPATIBLE:
+        return OpenAICompatibleProvider(
+            spec.model,
+            base_url=spec.base_url,
+            api_key_env=spec.api_key_env,
+            timeout=spec.timeout,
+            label=f"{spec.provider}:{spec.model}",
+        )
+    if spec.provider in ("local", "ollama"):
         return LocalProvider(spec.model)
-    raise ValueError(f"unknown provider '{spec.provider}' for role '{role}'")
+    raise ValueError(
+        f"unknown provider '{spec.provider}' for role '{role}'. "
+        f"Known: openrouter, {', '.join(sorted(OPENAI_COMPATIBLE))}, ollama"
+    )
 
 
 def authoring_enabled(config: dict | None = None) -> bool:

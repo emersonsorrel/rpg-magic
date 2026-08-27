@@ -34,8 +34,12 @@ class Completion:
     model: str = ""
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    # Local reasoning models spend most of their budget here and none of it on
+    # the answer, which is worth being able to see.
+    reasoning_tokens: int = 0
     cost: float = 0.0
     raw: str = ""
+    seconds: float = 0.0
 
 
 @runtime_checkable

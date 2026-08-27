@@ -26,8 +26,27 @@ llm:
     provider: openrouter
     model: openai/gpt-4.1-mini
     max_tokens: 4000
-    # provider: local
-    # model: llama3.1:8b
+
+    # --- running this role locally ---------------------------------------
+    # Anything speaking the OpenAI chat API works: LM Studio, llama.cpp's
+    # server, vLLM. Only the base_url differs, and it can also come from the
+    # environment (LMSTUDIO_BASE_URL, or LOCAL_LLM_BASE_URL for any of them),
+    # so a server on another machine needs no edit here.
+    #
+    #   provider: lmstudio
+    #   model: qwen/qwen3.8-27b
+    #   base_url: http://127.0.0.1:1234/v1
+    #   max_tokens: 8000     # reasoning models spend most of this thinking
+    #   timeout: 900         # and a 27B model is not quick about it
+    #
+    # Ollama speaks its own API rather than OpenAI's, so it has its own type:
+    #
+    #   provider: ollama
+    #   model: llama3.1:8b
+    #
+    # Before switching, check the model can actually hold the schemas:
+    #   python -m backend.llm.probe --provider lmstudio --model MODEL \
+    #       --base-url http://HOST:1234/v1
 
   # Used for the single repair round-trip, deliberately stronger than the model
   # whose output failed validation.
