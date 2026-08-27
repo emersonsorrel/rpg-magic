@@ -90,6 +90,34 @@ export class WorldState {
     this.#changed();
   }
 
+  /** Nudge subscribers after something mutated the ledger in place. */
+  touch() {
+    this.#changed();
+  }
+
+  get party() {
+    return this.ledger.party;
+  }
+
+  get zones() {
+    return this.ledger.zones;
+  }
+
+  /** Where the party wakes up after a defeat: the first committed town. */
+  get homeZone() {
+    return Object.values(this.ledger.zones).find((z) => z.kind === "town" && z.spawn) ?? null;
+  }
+
+  /** The mutable slice — player progress, not authored content. */
+  progressSnapshot() {
+    return {
+      party: this.ledger.party,
+      inventory: this.ledger.inventory,
+      flags: this.ledger.flags,
+      player_position: this.ledger.player_position,
+    };
+  }
+
   // --- position ----------------------------------------------------------
 
   get position() {

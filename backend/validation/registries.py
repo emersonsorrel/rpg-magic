@@ -20,6 +20,7 @@ class Registries:
     encounters: dict[str, dict]
     enemy_templates: dict[str, dict]
     tilesets: dict[str, dict]
+    skills: dict[str, dict]
     sprite_tags: frozenset[str]
     sfx_tags: frozenset[str]
     music_tags: frozenset[str]
@@ -41,6 +42,7 @@ def _load(name: str) -> dict:
 @functools.lru_cache(maxsize=1)
 def load_registries() -> Registries:
     items = _load("items.json")["items"]
+    skills = _load("skills.json")["skills"]
     enc = _load("encounters.json")
     tiles = _load("tilesets.json")["tilesets"]
     tags = _load("tags.json")
@@ -49,6 +51,7 @@ def load_registries() -> Registries:
         encounters={e["id"]: e for e in enc["encounters"]},
         enemy_templates={t["id"]: t for t in enc["templates"]},
         tilesets=tiles,
+        skills={s["id"]: s for s in skills},
         sprite_tags=frozenset(tags["sprite"]),
         sfx_tags=frozenset(tags["sfx"]),
         music_tags=frozenset(tags["music"]),

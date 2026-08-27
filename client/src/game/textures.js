@@ -394,7 +394,76 @@ export function buildCharacters(scene) {
   }
 }
 
+
+
+// --- enemies -------------------------------------------------------------
+//
+// Bigger than overworld characters (32x32) because a battle shows three of them
+// at a time and they need to read at a glance. Same tag-resolution rules as
+// everything else: assetPack.js picks the key, this draws it.
+
+const ENEMY_SIZE = 32;
+
+const ENEMY_PAINTERS = {
+  enemy_rat: (ctx, o) => {
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.beginPath(); ctx.ellipse(o + 16, 29, 11, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#6b6058";
+    ctx.beginPath(); ctx.ellipse(o + 15, 21, 11, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(o + 24, 17, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#8a7f74";
+    ctx.beginPath(); ctx.moveTo(o + 22, 12); ctx.lineTo(o + 25, 5); ctx.lineTo(o + 28, 13); ctx.fill();
+    ctx.strokeStyle = "#6b6058"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(o + 5, 22); ctx.quadraticCurveTo(o - 2, 16, o + 3, 10); ctx.stroke();
+    ctx.fillStyle = "#d4543f";
+    ctx.fillRect(o + 26, 15, 2, 2);
+  },
+  enemy_bat: (ctx, o) => {
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.beginPath(); ctx.ellipse(o + 16, 30, 8, 2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#4a4258";
+    ctx.beginPath(); ctx.moveTo(o + 16, 14); ctx.lineTo(o + 2, 8); ctx.lineTo(o + 5, 20); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(o + 16, 14); ctx.lineTo(o + 30, 8); ctx.lineTo(o + 27, 20); ctx.fill();
+    ctx.fillStyle = "#5f5674";
+    ctx.beginPath(); ctx.ellipse(o + 16, 16, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#4a4258";
+    ctx.beginPath(); ctx.moveTo(o + 12, 10); ctx.lineTo(o + 13, 4); ctx.lineTo(o + 16, 10); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(o + 20, 10); ctx.lineTo(o + 19, 4); ctx.lineTo(o + 16, 10); ctx.fill();
+    ctx.fillStyle = "#ffd98a";
+    ctx.fillRect(o + 13, 15, 2, 2); ctx.fillRect(o + 18, 15, 2, 2);
+  },
+  enemy_wight: (ctx, o) => {
+    ctx.fillStyle = "rgba(0,0,0,0.28)";
+    ctx.beginPath(); ctx.ellipse(o + 16, 30, 10, 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#3d4a4a";
+    ctx.fillRect(o + 9, 13, 14, 16);
+    ctx.fillStyle = "#546363";
+    ctx.fillRect(o + 6, 15, 3, 11); ctx.fillRect(o + 23, 15, 3, 11);
+    ctx.fillStyle = "#b9c6bd";
+    ctx.beginPath(); ctx.ellipse(o + 16, 9, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#101819";
+    ctx.fillRect(o + 12, 8, 3, 4); ctx.fillRect(o + 17, 8, 3, 4);
+    ctx.fillStyle = "#3d8f8a";
+    ctx.fillRect(o + 12, 9, 3, 2); ctx.fillRect(o + 17, 9, 3, 2);
+    ctx.fillStyle = "#2b3535";
+    for (let i = 0; i < 4; i += 1) ctx.fillRect(o + 10 + i * 4, 20 + (i % 2), 2, 6);
+  },
+};
+
+export function buildEnemies(scene) {
+  for (const [key, painter] of Object.entries(ENEMY_PAINTERS)) {
+    if (scene.textures.exists(key)) continue;
+    const texture = scene.textures.createCanvas(key, ENEMY_SIZE, ENEMY_SIZE);
+    const ctx = texture.getContext();
+    ctx.imageSmoothingEnabled = false;
+    painter(ctx, 0);
+    texture.refresh();
+  }
+}
+
+
 export function buildAll(scene) {
   for (const tileset of KNOWN_TILESETS) buildTileset(scene, tileset);
   buildCharacters(scene);
+  buildEnemies(scene);
 }

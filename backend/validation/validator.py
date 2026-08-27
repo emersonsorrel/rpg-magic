@@ -515,12 +515,17 @@ def validate_ledger(ledger, registries: Registries | None = None) -> Report:
                     f"$.zones.{zone_id}.exits.{direction}",
                     f"exit points at '{target}', which has no ledger entry.",
                 )
-            elif zone_id not in ((zones[target].get("exits") or {}).values()):
-                report.warn(
-                    Code.ASYMMETRIC_EXIT,
-                    f"$.zones.{zone_id}.exits.{direction}",
-                    f"'{target}' does not declare a way back to '{zone_id}'.",
-                )
+            else:
+                back = zones[target]
+                # A parent lists its interiors in `interiors`, not `exits`, so an
+                # interior's "out" is answered by the door that leads to it.
+                returns = set((back.get("exits") or {}).values()) | set(back.get("interiors") or [])
+                if zone_id not in returns:
+                    report.warn(
+                        Code.ASYMMETRIC_EXIT,
+                        f"$.zones.{zone_id}.exits.{direction}",
+                        f"'{target}' does not declare a way back to '{zone_id}'.",
+                    )
 
     for i, obligation in enumerate(ledger.get("obligations") or []):
         if not isinstance(obligation, dict):
@@ -574,10 +579,20 @@ def validate_ledger(ledger, registries: Registries | None = None) -> Report:
         )
 
     for i, member in enumerate(ledger.get("party") or []):
+        # A party member who knows a skill nothing defines has a dead menu entry
+        # the moment battles exist.
+        if isinstance(member, dict):
+            for j, skill in enumerate(member.get("skills") or []):
+                if skill not in reg.skills:
+                    report.error(
+                        Code.UNKNOWN_SKILL,
+                        f"$.party[{i}].skills[{j}]",
+                        f"'{skill}' is not in the skill registry.",
+                    )
         if isinstance(member, dict) and isinstance(member.get("hp"), int):
             if isinstance(member.get("max_hp"), int) and member["hp"] > member["max_hp"]:
                 report.error(
-                    Code.BAD_OBLIGATION_STATE,
+                    Code.BAD_PARTY_STATE,
                     f"$.party[{i}]",
                     f"hp {member['hp']} exceeds max_hp {member['max_hp']}.",
                 )

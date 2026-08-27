@@ -4,8 +4,8 @@ A procedurally generated, LLM-authored JRPG. The engine owns structure and truth
 the model authors content inside a schema the engine validates. See
 `docs/design.md` for the full design.
 
-**Status: M3 (LLM authoring) complete, plus building interiors.** Battles (M4)
-and obligation enforcement end-to-end (M5) are next.
+**Status: M4 (Battles) complete.** M5 — obligations enforced end to end, and
+save/load — is next.
 
 ## Quick start
 
@@ -87,7 +87,11 @@ client/
     textures.js                placeholder art, drawn at boot
     zoneLoader.js              fetch + schema gate before anything renders
     GameBus.js                 the shell <-> Phaser seam
-    scenes/                    Boot, Overworld, UI
+    scenes/                    Boot, Overworld, Battle, UI
+    battle/
+      engine.js                turn queue, actions, xp — no Phaser, no DOM
+      formulas.js              every number in the battle system
+      rng.js                   seeded, so a fight replays exactly
     generated/validators.js    COMMITTED build output -- see below
   src/shell/DebugPanel.js      flags, inventory and a live event log
   tools/build-validator.js     /schemas -> standalone JS validator
@@ -236,6 +240,12 @@ Named so it is not mistaken for finished work:
 - **Shops and inns do not transact.** The slot kinds exist and get authored
   dialogue — a shopkeeper stands behind a real counter in a real room — but
   there is no buy/sell UI.
+- **Death is a convenience, not a consequence.** Losing a fight puts the party
+  back in town at half health. There is no game over and no save-file penalty,
+  because there is no save/load yet — that is M5.
+- **Enemies have no authored framing yet.** Design doc 7 allows the model to
+  name enemies and write a boss's pre-fight lines. Encounters currently use the
+  registry's display names.
 - **Beats never advance.** `status` is written once at outline time and nothing
   moves it. M5's territory.
 
@@ -282,7 +292,35 @@ Two service fixes fell out of this:
   fingerprint of the schemas actually being served, and the client imports that
   exact build; static files are additionally served `no-store`.
 
-## Next: M4
+## Decisions taken during M4
+
+- **The battle engine is client-side, and framework-free.** Design doc 2 requires
+  the game to stay playable with the backend offline, so combat cannot round-trip
+  to a server. `battle/engine.js` knows nothing about Phaser or the DOM, exactly
+  like the Event Runner, which is what lets 25 tests play whole fights headlessly.
+- **Seeded and deterministic.** Same seed, same fight, every time. Damage
+  variance comes from a seeded RNG rather than `Math.random`, because a damage
+  roll that moves between runs makes every assertion about a battle a flake.
+- **Every number lives in `battle/formulas.js`.** Damage, healing, flee odds, the
+  XP curve, level-up gains and enemy scaling. Design doc 7 asked for the damage
+  formula to be configurable in one place; this is that place, and nothing else
+  in the battle code contains a constant.
+- **Random encounters go through `START_BATTLE`.** Walking into a fight and being
+  scripted into one are the same code path, through the Event Runner, so there is
+  one thing to test and one thing to get wrong.
+- **The engine never writes to the ledger mid-fight.** `commit()` moves hp, mp,
+  xp, level and spent items across only once a battle has actually ended, so a
+  fight abandoned halfway leaves no trace.
+- **The backend owns the registries; the client owns the fight.** `/api/registries`
+  serves items, skills and the bestiary so there is one definition of what a
+  Potion does, and `/api/world/state` takes progress back — validated before it
+  is written, since player progress is the only part of a committed world that is
+  ever rewritten.
+- **Skills are now a real registry.** Party members had been referencing `cut`,
+  `guard`, `spark` and `mend`, none of which existed anywhere. The ledger
+  validator now rejects a party member who knows a skill nothing defines.
+
+## Next: M5
 
 The outline call, the zone-authoring call, the provider abstraction, the
 validator's repair loop, and the template fallback. The seam is already open:

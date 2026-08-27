@@ -28,7 +28,10 @@
     "biome:mine",
     "biome:coast",
     "biome:waste",
-    "biome:interior"
+    "biome:interior",
+    "rodent",
+    "winged",
+    "humanoid"
   ],
   "sfx": [
     "chest_open",

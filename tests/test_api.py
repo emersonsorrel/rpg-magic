@@ -138,3 +138,52 @@ def test_position_survives_a_round_trip(client):
 def test_the_client_is_served_from_the_same_origin(client):
     """No CORS, one command to run the whole thing."""
     assert client.get("/client/index.html").status_code == 200
+
+
+def test_registries_are_served_to_the_client(client):
+    """The battle engine runs client-side but the registries stay backend-owned,
+    so there is one definition of what a Potion does."""
+    registries = client.get("/api/registries").json()
+    for section in ("items", "skills", "encounters", "templates"):
+        assert registries[section], f"{section} came back empty"
+    assert "potion" in registries["items"]
+    assert "mine_rats" in registries["encounters"]
+
+
+def test_progress_is_persisted(client):
+    ledger = client.get("/api/world").json()
+    party = ledger["party"]
+    party[0]["level"] += 1
+    party[0]["xp"] = 7
+
+    assert client.post("/api/world/state", json={"party": party}).status_code == 200
+    saved = client.get("/api/world").json()
+    assert saved["party"][0]["level"] == party[0]["level"]
+    assert saved["party"][0]["xp"] == 7
+
+
+def test_an_impossible_party_is_refused(client):
+    """Player progress is the only part of a committed world ever rewritten, so
+    it is the one place a bad write could corrupt a save."""
+    ledger = client.get("/api/world").json()
+    broken = [dict(ledger["party"][0], hp=9999)]
+
+    response = client.post("/api/world/state", json={"party": broken})
+    assert response.status_code == 422
+    assert any(issue["code"] == "bad_party_state" for issue in response.json()["detail"])
+    assert client.get("/api/world").json()["party"][0]["hp"] != 9999
+
+
+def test_a_zone_package_never_references_an_encounter_that_does_not_exist(client):
+    registries = client.get("/api/registries").json()
+    pending = list(client.get("/api/world").json()["zones"])
+    seen: set[str] = set()
+    while pending:
+        zone_id = pending.pop(0)
+        if zone_id in seen:
+            continue
+        seen.add(zone_id)
+        package = client.get(f"/api/zone/{zone_id}").json()
+        for row in package["encounters"]["table"]:
+            assert row["encounter_id"] in registries["encounters"]
+        pending.extend(z for z in client.get("/api/world").json()["zones"] if z not in seen)

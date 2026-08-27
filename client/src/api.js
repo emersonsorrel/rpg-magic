@@ -43,6 +43,18 @@ export const getWorld = () => request("/world").then((l) => gateLedger(l, "/api/
 export const getZone = (zoneId) =>
   request(`/zone/${zoneId}`).then((p) => gateZonePackage(p, `/api/zone/${zoneId}`));
 
+/** Items, skills and the bestiary. Backend-owned so there is one definition of
+ *  what a Potion does; fetched once at boot. */
+export const getRegistries = () => request("/registries");
+
+/** Persist player progress — the only part of a committed world ever rewritten. */
+export const saveState = (state) =>
+  request("/world/state", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state),
+  });
+
 export const newGame = (seed) =>
   request(`/new-game?seed=${encodeURIComponent(seed)}`, { method: "POST" }).then((l) =>
     gateLedger(l, "/api/new-game")

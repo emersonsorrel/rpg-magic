@@ -16,12 +16,14 @@ from __future__ import annotations
 import asyncio
 import pathlib
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import Scope
 
+from .validation.registries import load_registries
 from .validation.schema import schema_hash
+from .validation.validator import validate_ledger
 from .world.authoring import UnknownZone, ZoneRejected, begin, get_or_generate
 from .world.store import WorldStore
 
@@ -49,6 +51,23 @@ def get_schema_version():
     browser cache cannot lie about.
     """
     return {"schema_hash": schema_hash()}
+
+
+@app.get("/api/registries")
+def get_registries():
+    """Items, skills, and the enemy bestiary.
+
+    The battle engine runs in the client (design doc 2: the game stays playable
+    with the backend offline), but the registries stay backend-owned so there is
+    exactly one definition of what a Potion does. The client fetches them once.
+    """
+    reg = load_registries()
+    return {
+        "items": reg.items,
+        "skills": reg.skills,
+        "encounters": reg.encounters,
+        "templates": reg.enemy_templates,
+    }
 
 
 @app.get("/api/world")
@@ -97,6 +116,33 @@ async def get_zone(zone_id: str):
             },
         )
     return package
+
+
+@app.post("/api/world/state")
+async def save_state(payload: dict = Body(...)):
+    """Persist the mutable slice of the world: party, inventory, flags, position.
+
+    Everything here is player progress, not authored content, so it is the only
+    part of a committed world that is ever rewritten. The merged ledger is
+    validated before it is written -- a battle that somehow produced a party
+    member with more hp than max_hp should not become a save file.
+    """
+    s = store()
+    async with _writing:
+        ledger = s.load_ledger()
+        merged = dict(ledger)
+        for field in ("party", "inventory", "flags", "player_position"):
+            if field in payload:
+                merged[field] = payload[field]
+
+        report = validate_ledger(merged)
+        if not report.ok:
+            raise HTTPException(
+                status_code=422,
+                detail=[{"code": i.code, "path": i.path, "message": i.message} for i in report.errors],
+            )
+        s.save_ledger(merged)
+    return {"saved": True}
 
 
 @app.post("/api/world/position")

@@ -5,6 +5,8 @@ import { EventRunner } from "../EventRunner.js";
 import { createHost } from "../WorldState.js";
 import { bus, Events } from "../GameBus.js";
 import { resolveSprite } from "../assetPack.js";
+import { Battle, buildEncounter } from "../battle/engine.js";
+import { hashSeed, makeRng } from "../battle/rng.js";
 import { TILE, tilesetKey } from "../textures.js";
 
 const STEP_MS = 130;
@@ -48,6 +50,9 @@ export class OverworldScene extends Phaser.Scene {
     this.facing = "up";
 
     this.world.declareFlags(this.pkg.declares_flags);
+    this.registries = this.registry.get("registries") ?? { encounters: {}, templates: {}, skills: {}, items: {} };
+    this.battleCount = 0;
+    this._armEncounters();
     this.buildMap();
     this.buildEntities();
     this.buildPlayer();
@@ -157,13 +162,7 @@ export class OverworldScene extends Phaser.Scene {
       wait: (frames) =>
         new Promise((resolve) => this.time.delayedCall((frames * 1000) / 60, resolve)),
       moveEntity: (entityId, path) => this.moveEntity(entityId, path),
-      startBattle: async (encounterId) => {
-        await this.ui.showText({
-          speaker: null,
-          text: `[${encounterId}: battles arrive in M4. Counting this as a win.]`,
-        });
-        return "win";
-      },
+      startBattle: (encounterId) => this.startBattle(encounterId),
       // Recorded, not acted on: WARP halts the script, and tearing the scene
       // down while the runner is still unwinding through it would be a mess.
       warp: async (destination) => {
@@ -187,6 +186,107 @@ export class OverworldScene extends Phaser.Scene {
       });
       target.sprite.setDepth(10 + step.y);
     }
+  }
+
+  // --- battles -----------------------------------------------------------
+
+  /** Arm the encounter counter for this zone. Deterministic from the world
+   *  seed, so the same walk through the same floor meets the same things. */
+  _armEncounters() {
+    const table = this.pkg.encounters;
+    this.encounterRng = makeRng(hashSeed(this.registry.get("seed"), this.pkg.id, "encounters"));
+    this.stepsToEncounter = table?.enabled ? this._rollSteps() : Infinity;
+  }
+
+  _rollSteps() {
+    const rate = this.pkg.encounters?.rate ?? 24;
+    // Somewhere between half and one and a half times the rate, so the player
+    // cannot count paces.
+    return Math.max(4, Math.round(rate * (0.5 + this.encounterRng())));
+  }
+
+  _pickEncounter() {
+    const table = (this.pkg.encounters?.table ?? []).filter((row) => this.registries.encounters[row.encounter_id]);
+    if (!table.length) return null;
+    const total = table.reduce((n, row) => n + (row.weight ?? 1), 0);
+    let roll = this.encounterRng() * total;
+    for (const row of table) {
+      roll -= row.weight ?? 1;
+      if (roll <= 0) return row;
+    }
+    return table[table.length - 1];
+  }
+
+  _onStepTaken() {
+    if (this.stepsToEncounter === Infinity || this.busy) return;
+    this.stepsToEncounter -= 1;
+    if (this.stepsToEncounter > 0) return;
+    this.stepsToEncounter = this._rollSteps();
+    const row = this._pickEncounter();
+    if (!row) return;
+    // Routed through the ordinary op, so a random encounter and a scripted one
+    // are the same code path all the way down.
+    this.runScript([{ op: "START_BATTLE", encounter_id: row.encounter_id }]);
+  }
+
+  /**
+   * Build a battle and hand it to BattleScene, which runs over this one paused.
+   * Resolves "win" or "lose" for the Event Runner's START_BATTLE.
+   */
+  startBattle(encounterId) {
+    const encounter = this.registries.encounters[encounterId];
+    if (!encounter) {
+      bus.emit(Events.LOG, `unknown encounter '${encounterId}' — skipping`);
+      return Promise.resolve("win");
+    }
+    const row = (this.pkg.encounters?.table ?? []).find((r) => r.encounter_id === encounterId);
+    const level = row?.level ?? encounter.base_level ?? 1;
+
+    const battle = new Battle({
+      party: this.world.party,
+      enemies: buildEncounter(encounter, this.registries.templates, level),
+      skills: this.registries.skills,
+      items: this.registries.items,
+      inventory: this.world.inventory,
+      seed: hashSeed(this.registry.get("seed"), this.pkg.id, encounterId, this.battleCount++),
+    });
+
+    bus.emit(Events.LOG, `${encounter.display_name} — level ${level}`);
+
+    return new Promise((resolve) => {
+      this.scene.pause();
+      this.scene.launch("BattleScene", {
+        battle,
+        encounterName: encounter.display_name,
+        onDone: (outcome, result) => {
+          this.scene.resume();
+          this._afterBattle(outcome, result);
+          resolve(outcome);
+        },
+      });
+    });
+  }
+
+  _afterBattle(outcome, result) {
+    for (const levelUp of result?.levelUps ?? []) {
+      bus.emit(Events.LOG, `${levelUp.name} reached level ${levelUp.level}`);
+    }
+    if (outcome === "lose") {
+      // Classic convention rather than a hard game over: the party wakes up
+      // back in town, worse for wear. M5 can make death mean more.
+      for (const member of this.world.party) {
+        member.hp = Math.max(1, Math.floor(member.max_hp / 2));
+      }
+      const home = this.world.homeZone;
+      bus.emit(Events.LOG, "the party wakes up back in town");
+      if (home) {
+        this.pendingWarp = { toZone: home.id, toX: home.spawn[0], toY: home.spawn[1] };
+      }
+    }
+    this.world.touch();
+    api.saveState(this.world.progressSnapshot()).catch((error) => {
+      bus.emit(Events.LOG, `could not save progress: ${error.message}`);
+    });
   }
 
   // --- zone transitions --------------------------------------------------
@@ -286,6 +386,7 @@ export class OverworldScene extends Phaser.Scene {
         this.world.setPosition(this.pkg.id, nx, ny);
         this.moving = false;
         this.checkWarp();
+        if (!this.pendingWarp && !this.busy) this._onStepTaken();
       },
     });
   }

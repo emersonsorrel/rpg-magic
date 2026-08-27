@@ -34,6 +34,7 @@ class Code:
     UNKNOWN_ITEM = "unknown_item"
     UNKNOWN_FLAG = "unknown_flag"
     UNKNOWN_ENCOUNTER = "unknown_encounter"
+    UNKNOWN_SKILL = "unknown_skill"
     UNKNOWN_ENTITY = "unknown_entity"
     UNKNOWN_ZONE = "unknown_zone"
     WARP_TARGET_UNDECLARED = "warp_target_undeclared"
@@ -59,6 +60,7 @@ class Code:
     ASYMMETRIC_EXIT = "asymmetric_exit"
     UNKNOWN_BEAT = "unknown_beat"
     BAD_OBLIGATION_STATE = "bad_obligation_state"
+    BAD_PARTY_STATE = "bad_party_state"
 
     # soft
     UNKNOWN_TAG = "unknown_tag"

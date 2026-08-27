@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "_note": "The closed skill set. Party members and enemy templates may only reference ids from here, which the ledger validator enforces. `power` multiplies the damage formula for physical/magic; for heal it is a flat amount before magic scaling.",
+  "skills": [
+    { "id": "cut",     "name": "Cut",     "kind": "physical", "mp": 0, "power": 1.35, "target": "one_enemy" },
+    { "id": "guard",   "name": "Guard",   "kind": "guard",    "mp": 0, "power": 0,    "target": "self" },
+    { "id": "spark",   "name": "Spark",   "kind": "magic",    "mp": 4, "power": 1.5,  "target": "one_enemy" },
+    { "id": "mend",    "name": "Mend",    "kind": "heal",     "mp": 5, "power": 34,   "target": "one_ally" },
+    { "id": "rally",   "name": "Rally",   "kind": "heal",     "mp": 8, "power": 18,   "target": "all_allies" },
+
+    { "id": "bite",          "name": "Bite",          "kind": "physical", "mp": 0, "power": 1.15, "target": "one_enemy" },
+    { "id": "screech",       "name": "Screech",       "kind": "magic",    "mp": 3, "power": 0.85, "target": "all_enemies" },
+    { "id": "drowning_grip", "name": "Drowning Grip", "kind": "physical", "mp": 4, "power": 1.7,  "target": "one_enemy" }
+  ]
+}

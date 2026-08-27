@@ -10,6 +10,7 @@
 import * as Phaser from "phaser";
 
 import * as api from "./api.js";
+import { BattleScene } from "./game/scenes/BattleScene.js";
 import { BootScene } from "./game/scenes/BootScene.js";
 import { OverworldScene } from "./game/scenes/OverworldScene.js";
 import { UIScene } from "./game/scenes/UIScene.js";
@@ -25,10 +26,14 @@ function fatal(message, detail) {
 async function boot() {
   let ledger;
   let zone;
+  let registries;
   try {
     const schemaHash = await api.ready();
     ledger = await api.getWorld();
-    zone = await api.getZone(ledger.player_position.zone);
+    [zone, registries] = await Promise.all([
+      api.getZone(ledger.player_position.zone),
+      api.getRegistries(),
+    ]);
   } catch (error) {
     console.error(error);
     fatal("Could not start", error.message);
@@ -54,7 +59,7 @@ async function boot() {
     roundPixels: true,
     backgroundColor: "#0b0d12",
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    scene: [BootScene, OverworldScene, UIScene],
+    scene: [BootScene, OverworldScene, BattleScene, UIScene],
     callbacks: {
       // Guaranteed to run before any scene's create(), unlike setting the
       // registry after the constructor returns.
@@ -62,6 +67,7 @@ async function boot() {
         g.registry.set("zone", zone);
         g.registry.set("world", world);
         g.registry.set("seed", ledger.seed);
+        g.registry.set("registries", registries);
       },
     },
   });
