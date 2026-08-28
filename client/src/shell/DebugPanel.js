@@ -28,6 +28,9 @@ export function mountShell(root, world, { seed, onNewWorld, api, zoneCache } = {
     </label>
     <p class="controls" id="prefetch-stats">Authoring a new zone takes seconds; warming it while you stand still hides that. Speculating on an unbuilt zone costs one model call, so at most two are built ahead.</p>
 
+    <h2>Authoring</h2>
+    <p id="authoring" class="zone">checking…</p>
+
     <h2>Saves</h2>
     <div class="seedbar">
       <input id="save-name" type="text" placeholder="name this save" maxlength="40" />
@@ -54,6 +57,24 @@ export function mountShell(root, world, { seed, onNewWorld, api, zoneCache } = {
   const lines = [];
 
   const savesEl = root.querySelector("#saves");
+  const authoringEl = root.querySelector("#authoring");
+
+  async function refreshAuthoring() {
+    if (!api) return;
+    try {
+      const { authoring } = await api.getStatus();
+      if (!authoring.enabled) {
+        authoringEl.innerHTML =
+          `<b class="off">off</b> — ${authoring.reason}. Zones commit placeholder content.`;
+        return;
+      }
+      const role = authoring.roles.zone_author ?? Object.values(authoring.roles)[0] ?? {};
+      const where = role.base_url ? ` @ ${role.base_url.replace(/^https?:\/\//, "")}` : "";
+      authoringEl.innerHTML = `<b class="on">on</b> — ${role.provider}: ${role.model}${where}`;
+    } catch (error) {
+      authoringEl.textContent = `could not read status: ${error.message}`;
+    }
+  }
 
   async function refreshSaves() {
     if (!api) return;
@@ -135,11 +156,16 @@ export function mountShell(root, world, { seed, onNewWorld, api, zoneCache } = {
   world.subscribe(renderState);
   renderState();
   refreshSaves();
+  refreshAuthoring();
 
-  bus.on(Events.ZONE_LOADED, ({ id, kind, summary, entities, size }) => {
-    zoneLine.innerHTML = `<b class="on">${id}</b> — ${kind}, ${size[0]}×${size[1]}, ${entities} entities`;
+  bus.on(Events.ZONE_LOADED, ({ id, kind, summary, entities, size, authored }) => {
+    const verdict = authored
+      ? ` · <b class="${authored === "placeholder" ? "off" : "on"}">${authored}</b>`
+      : "";
+    zoneLine.innerHTML =
+      `<b class="on">${id}</b> — ${kind}, ${size[0]}×${size[1]}, ${entities} entities${verdict}`;
     summaryEl.textContent = summary;
-    log(`entered ${id}`);
+    log(`entered ${id}${authored ? ` (${authored})` : ""}`);
   });
   bus.on(Events.LOG, (message) => log(message));
   bus.on(Events.DIALOGUE, ({ speaker, text, options }) => {

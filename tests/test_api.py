@@ -298,3 +298,40 @@ def test_rerolling_replaces_a_damaged_world(client):
     rerolled = client.post("/api/new-game?seed=4242").json()
     assert validate_ledger(rerolled).ok
     assert rerolled["seed"] == 4242
+
+
+def test_status_reports_who_is_authoring(client, monkeypatch):
+    """Which model is answering should never be a guess."""
+    monkeypatch.delenv("RPG_MAGIC_NO_LLM", raising=False)
+    status = client.get("/api/status").json()["authoring"]
+    assert set(status["roles"]) >= {"outline", "zone_author"}
+    for role in status["roles"].values():
+        assert role["provider"] and role["model"]
+
+
+def test_status_says_when_authoring_is_switched_off(client, monkeypatch):
+    """The bug this exists for: a stray RPG_MAGIC_NO_LLM in the server's
+    environment turned every zone into placeholder content, and nothing on
+    screen distinguished that from a model refusing to answer."""
+    monkeypatch.setenv("RPG_MAGIC_NO_LLM", "1")
+    status = client.get("/api/status").json()["authoring"]
+    assert status["enabled"] is False
+    assert "RPG_MAGIC_NO_LLM" in status["reason"]
+
+
+def test_a_local_provider_reports_its_endpoint(client, monkeypatch, tmp_path):
+    """So a misconfigured base_url is visible rather than silent."""
+    import yaml
+
+    config = tmp_path / "llm.yaml"
+    config.write_text(yaml.safe_dump({"llm": {
+        "enabled": True,
+        "zone_author": {"provider": "lmstudio", "model": "some-model",
+                        "base_url": "http://192.168.0.5:1234/v1"},
+    }}))
+    monkeypatch.delenv("RPG_MAGIC_NO_LLM", raising=False)
+    monkeypatch.setattr("backend.llm.config.CONFIG_PATH", config)
+
+    role = client.get("/api/status").json()["authoring"]["roles"]["zone_author"]
+    assert role["base_url"] == "http://192.168.0.5:1234/v1"
+    assert role["model"] == "some-model"

@@ -88,6 +88,7 @@ export class OverworldScene extends Phaser.Scene {
     bus.emit(Events.ZONE_LOADED, {
       id: this.pkg.id,
       kind: this.pkg.kind,
+      authored: this.world.zones?.[this.pkg.id]?.authored ?? null,
       summary: this.pkg.summary,
       entities: this.pkg.entities.length,
       size: [this.pkg.width, this.pkg.height],

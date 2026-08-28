@@ -73,6 +73,13 @@ when the server is on another machine:
 LMSTUDIO_BASE_URL=http://192.168.1.20:1234/v1
 ```
 
+The shell shows which model is answering, and whether authoring is on at all —
+`on — lmstudio: model @ host` or `off — <reason>`. Each zone is also labelled
+`authored`, `repaired` or `placeholder` as you enter it. Both exist because a
+stray `RPG_MAGIC_NO_LLM` in the server's environment once turned every zone into
+placeholder content with nothing on screen to distinguish that from a model that
+was refusing to answer.
+
 **Check a model before switching to it.** Two things decide whether one is usable
 here, and neither is on a model card:
 

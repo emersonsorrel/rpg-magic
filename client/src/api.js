@@ -61,6 +61,10 @@ export const getZone = (zoneId) =>
  *  what a Potion does; fetched once at boot. */
 export const getRegistries = () => request("/registries");
 
+/** Whether authoring is on and who is doing it. Surfaced in the shell so a
+ *  silently-disabled model is never mistaken for a broken one. */
+export const getStatus = () => request("/status");
+
 /** Persist player progress — the only part of a committed world ever rewritten. */
 export const saveState = (state) =>
   request("/world/state", {

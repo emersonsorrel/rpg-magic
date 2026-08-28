@@ -14,6 +14,7 @@ origin and one command.
 from __future__ import annotations
 
 import asyncio
+import os
 import pathlib
 import re
 
@@ -22,6 +23,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import Scope
 
+from .llm.config import authoring_enabled, load_config, role_config
 from .validation.registries import load_registries
 from .validation.schema import schema_hash
 from .validation.validator import validate_ledger
@@ -52,6 +54,42 @@ def get_schema_version():
     browser cache cannot lie about.
     """
     return {"schema_hash": schema_hash()}
+
+
+@app.get("/api/status")
+def get_status():
+    """Whether authoring is actually on, and who is doing it.
+
+    This exists because it was once entirely invisible: a stray RPG_MAGIC_NO_LLM
+    in the server's environment silently turned every zone into placeholder
+    content, and from the game there was no way to tell that from a model that
+    was simply refusing to answer.
+    """
+    config = load_config()
+    enabled = authoring_enabled(config)
+
+    reason = None
+    if not enabled:
+        if os.environ.get("RPG_MAGIC_NO_LLM"):
+            reason = "RPG_MAGIC_NO_LLM is set in the server's environment"
+        elif not config.get("enabled", True):
+            reason = "llm.enabled is false in llm.yaml"
+        else:
+            reason = "no API key for the configured provider"
+
+    roles = {}
+    for role in ("outline", "zone_author", "fallback"):
+        if role not in config:
+            continue
+        spec = role_config(role, config)
+        roles[role] = {
+            "provider": spec.provider,
+            "model": spec.model,
+            "base_url": spec.base_url,
+            "max_tokens": spec.max_tokens,
+        }
+
+    return {"authoring": {"enabled": enabled, "reason": reason, "roles": roles}}
 
 
 @app.get("/api/registries")
