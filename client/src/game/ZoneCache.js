@@ -79,10 +79,10 @@ export class ZoneCache {
   schedule(neighbours) {
     if (!this.enabled) return;
     let budget = this.maxPending - this.speculated.size;
-    for (const { id, committed } of neighbours) {
+    for (const { id, committed, speculative = !committed } of neighbours) {
       if (this.packages.has(id) || this.inFlight.has(id) || this.queue.includes(id)) continue;
-      if (!committed) {
-        // Speculating on an unbuilt zone costs a model call. Ration it.
+      if (!committed && speculative) {
+        // Guessing which way the player will leave costs a model call. Ration it.
         if (budget <= 0) continue;
         budget -= 1;
         this.speculated.add(id);
@@ -127,11 +127,19 @@ export class ZoneCache {
 /**
  * Which zones to warm from where the player is standing, best first.
  *
- * The spine comes before interiors: a player crossing a town is far more likely
- * to take the road out than to enter any one particular front door, and there
- * are seven of those.
+ * The spine goes first — a road out is one door among many and the likeliest
+ * exit — but every interior follows, unrationed.
+ *
+ * That rationing was wrong for interiors. Guessing which way someone will leave
+ * a town is speculation worth limiting; a town's own front doors are not. A
+ * player let loose in a town will try the buildings, and having five of seven
+ * stall on a live model call is the difference between a game and a wait. They
+ * are also small: a room with two slots, not a dungeon floor.
+ *
+ * Interiors are ordered by how close their door is to the player, so the one
+ * they are walking towards is built first.
  */
-export function neighboursOf(pkg, ledger) {
+export function neighboursOf(pkg, ledger, from = null) {
   const zones = ledger?.zones ?? {};
   const seen = new Set();
   const spine = [];
@@ -142,11 +150,19 @@ export function neighboursOf(pkg, ledger) {
     if (seen.has(id)) continue;
     seen.add(id);
     const zone = zones[id];
-    const entry = { id, committed: Boolean(zone?.committed) };
-    (zone?.kind === "interior" ? interiors : spine).push(entry);
+    const committed = Boolean(zone?.committed);
+    if (zone?.kind === "interior") {
+      const distance = from
+        ? Math.abs(warp.x - from.x) + Math.abs(warp.y - from.y)
+        : 0;
+      interiors.push({ id, committed, speculative: false, distance });
+    } else {
+      spine.push({ id, committed, speculative: !committed });
+    }
   }
 
   // Already-built zones first within each group: they are a free round trip.
   const byCost = (a, b) => Number(b.committed) - Number(a.committed);
-  return [...spine.sort(byCost), ...interiors.sort(byCost)];
+  interiors.sort((a, b) => byCost(a, b) || a.distance - b.distance);
+  return [...spine.sort(byCost), ...interiors];
 }

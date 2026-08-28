@@ -172,3 +172,69 @@ describe("failure and control", () => {
     assert.equal((await cache.load("a")).id, "a");
   });
 });
+
+describe("a town's own doors are not speculation", () => {
+  const townWithSevenDoors = {
+    id: "zone_town_01",
+    warps: [
+      { x: 27, y: 0, to_zone: "zone_depths_02" },
+      { x: 22, y: 20, to_zone: "zone_town_01_in01" },
+      { x: 9, y: 13, to_zone: "zone_town_01_in02" },
+      { x: 19, y: 10, to_zone: "zone_town_01_in03" },
+      { x: 8, y: 16, to_zone: "zone_town_01_in04" },
+      { x: 28, y: 6, to_zone: "zone_town_01_in05" },
+      { x: 26, y: 3, to_zone: "zone_town_01_in06" },
+      { x: 28, y: 11, to_zone: "zone_town_01_in07" },
+    ],
+  };
+  const ledger = {
+    zones: {
+      zone_depths_02: { kind: "dungeon", committed: false },
+      ...Object.fromEntries(
+        [1, 2, 3, 4, 5, 6, 7].map((n) => [
+          `zone_town_01_in0${n}`, { kind: "interior", committed: false },
+        ])
+      ),
+    },
+  };
+
+  it("queues every interior, not just the rationed two", () => {
+    /* Reported from play: entering a building fired a live model call, because
+       the cap that limits guessing which way you will leave town was also
+       limiting the town's own front doors. */
+    const cache = new ZoneCache({ fetchZone: async () => ({}), maxPending: 2 });
+    cache.schedule(neighboursOf(townWithSevenDoors, ledger, { x: 20, y: 14 }));
+    const queued = cache.queue.filter((id) => id.includes("_in0"));
+    assert.equal(queued.length, 7, `only queued ${queued.length} of 7 interiors`);
+  });
+
+  it("still rations guesses about where the player will walk next", () => {
+    const cache = new ZoneCache({ fetchZone: async () => ({}), maxPending: 0 });
+    cache.schedule(neighboursOf(townWithSevenDoors, ledger, { x: 20, y: 14 }));
+    assert.ok(!cache.queue.includes("zone_depths_02"), "spine speculation should still be capped");
+    assert.equal(cache.queue.filter((id) => id.includes("_in0")).length, 7);
+  });
+
+  it("builds the nearest door first", () => {
+    const cache = new ZoneCache({ fetchZone: async () => ({}), maxPending: 2 });
+    // Standing right outside in04 at (8,16).
+    cache.schedule(neighboursOf(townWithSevenDoors, ledger, { x: 8, y: 17 }));
+    const interiors = cache.queue.filter((id) => id.includes("_in0"));
+    assert.equal(interiors[0], "zone_town_01_in04", `got ${interiors[0]}`);
+  });
+
+  it("puts the road out ahead of the doors", () => {
+    const cache = new ZoneCache({ fetchZone: async () => ({}), maxPending: 2 });
+    cache.schedule(neighboursOf(townWithSevenDoors, ledger, { x: 20, y: 14 }));
+    assert.equal(cache.queue[0], "zone_depths_02");
+  });
+
+  it("prefers already-built interiors, which cost nothing to fetch", () => {
+    const warmed = JSON.parse(JSON.stringify(ledger));
+    warmed.zones.zone_town_01_in07.committed = true;
+    const cache = new ZoneCache({ fetchZone: async () => ({}), maxPending: 2 });
+    cache.schedule(neighboursOf(townWithSevenDoors, warmed, { x: 20, y: 14 }));
+    const interiors = cache.queue.filter((id) => id.includes("_in0"));
+    assert.equal(interiors[0], "zone_town_01_in07");
+  });
+});

@@ -162,7 +162,19 @@ def _entities(layout: Layout, zone_id: str, kind: str, fills: dict | None = None
     return entities
 
 
+# Slots that are objects, not people. The author decides what is in a chest;
+# the engine decides that a chest looks like a chest.
+OBJECT_SLOTS = {"chest", "sign"}
+
+
 def _fill_tags(fill: dict | None, role: str, tileset: str) -> list[str]:
+    if role in OBJECT_SLOTS:
+        # Observed: a model filling a chest slot tagged it "smith" — thinking of
+        # whose chest it was — and the tag resolver duly drew a blacksmith
+        # standing where the chest should be. What an object looks like is not
+        # the author's call.
+        return _biome_tags(role, tileset)
+
     chosen = (fill or {}).get("sprite_tags")
     if not chosen:
         return _biome_tags(role, tileset)

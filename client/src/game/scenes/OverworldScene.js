@@ -85,6 +85,8 @@ export class OverworldScene extends Phaser.Scene {
       this.idleSince = this.time.now;   // any input resets the idle clock
     });
 
+    this.warmInteriorsNow();
+
     bus.emit(Events.ZONE_LOADED, {
       id: this.pkg.id,
       kind: this.pkg.kind,
@@ -216,7 +218,26 @@ export class OverworldScene extends Phaser.Scene {
 
   prefetchNeighbours() {
     if (!this.cache) return;
-    this.cache.schedule(neighboursOf(this.pkg, this.world.ledger));
+    this.cache.schedule(neighboursOf(this.pkg, this.world.ledger, { x: this.px, y: this.py }));
+    this.cache.drain();
+  }
+
+  /**
+   * Start building this place's interiors the moment it loads, without waiting
+   * for the player to stand still.
+   *
+   * The idle delay is right for guessing which way someone will leave a town —
+   * no reason to burn a model call while they are walking past. It is wrong for
+   * the town's own front doors: a player let loose in a town walks straight at
+   * one, and waiting for them to stop first guarantees the first door they try
+   * is the one that was never warmed.
+   */
+  warmInteriorsNow() {
+    if (!this.cache) return;
+    const doors = neighboursOf(this.pkg, this.world.ledger, { x: this.px, y: this.py })
+      .filter((neighbour) => neighbour.speculative === false);
+    if (!doors.length) return;
+    this.cache.schedule(doors);
     this.cache.drain();
   }
 

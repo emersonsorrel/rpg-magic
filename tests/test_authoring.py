@@ -485,3 +485,48 @@ class TestProviderConfig:
                 asyncio.run(provider.complete(system="s", user="u", schema={}, max_tokens=100))
         finally:
             module.httpx2.AsyncClient = original
+
+
+class TestObjectSlots:
+    """The author decides what is in a chest; the engine decides that a chest
+    looks like a chest."""
+
+    def test_a_chest_is_drawn_as_a_chest_whatever_the_author_says(self):
+        """Observed in play: a model filling a chest slot tagged it 'smith' --
+        thinking of whose chest it was -- and the tag resolver drew a blacksmith
+        standing where the chest should be."""
+        from backend.packaging.assemble import assemble, slot_ids
+        from backend.procgen.interior import generate as generate_interior
+
+        layout = generate_interior(SEED, "zone_town_01_in02", {"out": "zone_town_01"}, {},
+                                   role="house", return_to=(9, 14))
+        fills = {
+            sid: {"slot_id": sid, "display_name": "Anvil", "sprite_tags": ["human", "smith"],
+                  "script": [{"op": "SHOW_TEXT", "speaker": "Anvil", "text": "hello"}]}
+            for sid in slot_ids(layout)
+        }
+        package = assemble(layout, "zone_town_01_in02", "interior", fills=fills,
+                           summary="A house with a chest in it, long enough to pass.")
+
+        people = {"human", "elder", "adult", "child", "smith", "merchant", "miner", "farmer"}
+        for entity in package["entities"]:
+            tags = set(entity["sprite_tags"])
+            if entity["type"] == "chest":
+                assert "chest" in tags, f"chest has no chest tag: {sorted(tags)}"
+                assert not (tags & people), f"chest tagged as a person: {sorted(tags)}"
+
+    def test_a_person_still_looks_how_the_author_wanted(self):
+        from backend.packaging.assemble import assemble, slot_ids
+        from backend.procgen.interior import generate as generate_interior
+
+        layout = generate_interior(SEED, "zone_town_01_in02", {"out": "zone_town_01"}, {},
+                                   role="shop", return_to=(9, 14))
+        fills = {
+            sid: {"slot_id": sid, "display_name": "Mira", "sprite_tags": ["human", "merchant"],
+                  "script": [{"op": "SHOW_TEXT", "speaker": "Mira", "text": "hello"}]}
+            for sid in slot_ids(layout)
+        }
+        package = assemble(layout, "zone_town_01_in02", "interior", fills=fills,
+                           summary="A shop with a shopkeeper in it, long enough to pass.")
+        keeper = next(e for e in package["entities"] if e["type"] == "npc")
+        assert "merchant" in keeper["sprite_tags"]

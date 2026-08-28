@@ -24,9 +24,9 @@ export function mountShell(root, world, { seed, onNewWorld, api, zoneCache } = {
     <h2>Prefetch</h2>
     <label class="toggle">
       <input id="prefetch" type="checkbox" checked />
-      <span>Warm neighbouring zones while idle</span>
+      <span>Build ahead of the player</span>
     </label>
-    <p class="controls" id="prefetch-stats">Authoring a new zone takes seconds; warming it while you stand still hides that. Speculating on an unbuilt zone costs one model call, so at most two are built ahead.</p>
+    <p class="controls" id="prefetch-stats">Buildings in this town start building the moment you arrive, nearest door first. Guessing which way you will leave waits until you stand still, and is capped at two.</p>
 
     <h2>Authoring</h2>
     <p id="authoring" class="zone">checking…</p>
@@ -57,6 +57,7 @@ export function mountShell(root, world, { seed, onNewWorld, api, zoneCache } = {
   const lines = [];
 
   const savesEl = root.querySelector("#saves");
+  let currentZoneId = world.position?.zone ?? null;
   const authoringEl = root.querySelector("#authoring");
 
   async function refreshAuthoring() {
@@ -110,9 +111,20 @@ export function mountShell(root, world, { seed, onNewWorld, api, zoneCache } = {
     });
     setInterval(() => {
       const { hits, misses, prefetched } = zoneCache.stats;
+      // How much of the place you are standing in is actually ready. This is
+      // the number that matters: "5 of 7 buildings ready" answers the question
+      // "why did that door make me wait" before it gets asked.
+      const zone = world.zones?.[currentZoneId];
+      const doors = zone?.interiors ?? [];
+      const ready = doors.filter(
+        (id) => zoneCache.has(id) || world.zones?.[id]?.committed
+      ).length;
+      const buildings = doors.length
+        ? `${ready}/${doors.length} buildings ready · `
+        : "";
       prefetchStats.textContent =
-        `${prefetched} warmed · ${hits} instant · ${misses} waited for.`;
-    }, 1500);
+        `${buildings}${prefetched} warmed · ${hits} instant · ${misses} waited for.`;
+    }, 1000);
   } else {
     prefetchBox.disabled = true;
   }
@@ -159,6 +171,7 @@ export function mountShell(root, world, { seed, onNewWorld, api, zoneCache } = {
   refreshAuthoring();
 
   bus.on(Events.ZONE_LOADED, ({ id, kind, summary, entities, size, authored }) => {
+    currentZoneId = id;
     const verdict = authored
       ? ` · <b class="${authored === "placeholder" ? "off" : "on"}">${authored}</b>`
       : "";
